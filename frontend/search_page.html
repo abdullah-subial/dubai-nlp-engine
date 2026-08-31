@@ -182,7 +182,31 @@ footer{
     <div class="finder-fields">
       <div class="field">
         <label for="areaInput">Area <span style="color:var(--gold)">*</span></label>
-        <input id="areaInput" type="text" placeholder="e.g. Dubai Marina" autofocus required>
+        <input id="areaInput" type="text" list="areaList" placeholder="e.g. Dubai Marina" autofocus required autocomplete="off">
+        <datalist id="areaList">
+          <option value="Dubai Marina">
+          <option value="Downtown Dubai">
+          <option value="Jumeirah Beach Residence (JBR)">
+          <option value="Business Bay">
+          <option value="Palm Jumeirah">
+          <option value="Deira">
+          <option value="Bur Dubai">
+          <option value="Al Barsha">
+          <option value="Jumeirah Lake Towers (JLT)">
+          <option value="Dubai Hills Estate">
+          <option value="DIFC">
+          <option value="Al Quoz">
+          <option value="City Walk">
+          <option value="La Mer">
+          <option value="Umm Suqeim">
+          <option value="Al Karama">
+          <option value="Satwa">
+          <option value="Mirdif">
+          <option value="Arabian Ranches">
+          <option value="Dubai Silicon Oasis">
+          <option value="International City">
+          <option value="Discovery Gardens">
+        </datalist>
       </div>
       <div class="finder-divider"></div>
       <div class="field">
