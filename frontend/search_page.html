@@ -1,0 +1,252 @@
+<title>Find My Table</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Plus+Jakarta+Sans:wght@600;700;800&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --maroon:#721c3b;
+  --maroon-ink:#4a1226;
+  --gold:#d98e28;
+  --gold-soft:#f0c987;
+  --cream:#f7f4f0;
+  --paper:#fffdfb;
+  --ink:#2b1820;
+  --muted:#78616b;
+  --line:#e8dcd4;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;
+  background:var(--cream);
+  color:var(--ink);
+  font-family:'Outfit',sans-serif;
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  position:relative;
+  overflow-x:hidden;
+}
+p{margin:0;}
+::selection{background:var(--gold-soft); color:var(--maroon-ink);}
+
+/* soft ambient glow -- the one flourish on an otherwise quiet page */
+body::before{
+  content:'';
+  position:absolute; top:-20%; left:50%; translate:-50% 0;
+  width:1100px; height:700px;
+  background:
+    radial-gradient(closest-side, rgba(217,142,40,0.16), transparent 70%),
+    radial-gradient(closest-side, rgba(114,28,59,0.10), transparent 70%);
+  pointer-events:none;
+  z-index:0;
+}
+
+.wordmark{
+  position:relative; z-index:1;
+  display:flex; align-items:baseline; gap:8px; justify-content:center;
+  font-family:'Plus Jakarta Sans',sans-serif;
+  font-weight:800; font-size:1.05rem; letter-spacing:0.02em;
+  color:var(--maroon);
+  padding:28px 20px 0;
+}
+.wordmark .dot{
+  display:inline-block;
+  align-self:center;
+  width:6px; height:6px;
+  border-radius:50%;
+  background:var(--gold);
+  margin:0 1px;
+}
+
+.stage{
+  position:relative; z-index:1;
+  flex:1;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  text-align:center;
+  padding:40px 20px 60px;
+  gap:36px;
+}
+
+h1{
+  margin:0;
+  font-family:'Fraunces',serif;
+  font-size:clamp(2.4rem, 5.6vw, 4.2rem);
+  font-weight:600;
+  line-height:1.04;
+  letter-spacing:-0.01em;
+  color:var(--maroon-ink);
+  text-wrap:balance;
+}
+h1 em{
+  font-style:italic; font-weight:500;
+  background:linear-gradient(100deg, var(--maroon) 0%, var(--gold) 100%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+.hero-sub{
+  font-size:clamp(1.02rem,1.6vw,1.2rem);
+  color:var(--muted);
+  max-width:44ch;
+  line-height:1.5;
+}
+
+/* ============ SEARCH ROW ============ */
+.finder{
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:10px;
+  box-shadow:0 24px 60px -24px rgba(74,18,38,0.28);
+  width:100%;
+  max-width:720px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.finder-fields{
+  display:grid;
+  grid-template-columns:1fr auto 1fr auto 1fr;
+  gap:4px;
+}
+.field{
+  display:flex; flex-direction:column; gap:3px;
+  padding:11px 18px;
+  border-radius:14px;
+  text-align:left;
+  transition:background .15s ease;
+}
+.field:hover{background:rgba(114,28,59,0.04);}
+.field label{
+  font-size:0.66rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;
+  color:var(--maroon);
+}
+.field input{
+  border:none; background:transparent; font-family:'Outfit',sans-serif;
+  font-size:1rem; font-weight:500; color:var(--ink); padding:2px 0; outline:none;
+  width:100%;
+}
+.field input::placeholder{color:#b7a6ac;}
+.finder-divider{width:1px; background:var(--line); margin:8px 0; align-self:stretch;}
+.finder-submit{
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  background:var(--maroon); color:#fff8f0;
+  border:none; border-radius:14px;
+  width:100%;
+  padding:15px 0;
+  font-weight:700; font-size:0.98rem;
+  cursor:pointer; white-space:nowrap;
+  transition:transform .18s ease, background .18s ease;
+  box-shadow:0 10px 24px -10px rgba(114,28,59,0.55);
+}
+.finder-submit:hover{background:var(--maroon-ink); transform:translateY(-1px);}
+.finder-submit:active{transform:translateY(0);}
+.finder-submit:focus-visible, .field input:focus-visible{outline:2px solid var(--gold); outline-offset:2px;}
+.finder-submit svg{transition:transform .18s ease;}
+.finder-submit.is-loading svg{animation:spin 0.8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+@media (max-width:640px){
+  .finder-fields{grid-template-columns:1fr;}
+  .finder-divider{display:none;}
+  .field{border-bottom:1px solid var(--line);}
+  .field:last-child{border-bottom:none;}
+}
+
+.hint{
+  font-size:0.8rem; color:var(--muted);
+  display:flex; align-items:center; gap:7px;
+}
+.hint svg{width:13px; height:13px; color:var(--gold);}
+
+footer{
+  position:relative; z-index:1;
+  text-align:center; padding:22px 20px;
+  font-size:0.76rem; color:var(--muted);
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:0.001ms !important; transition-duration:0.001ms !important;}
+}
+</style>
+
+<div class="wordmark">DINE<span class="dot"></span>DUBAI</div>
+
+<div class="stage">
+  <div>
+    <h1>Your next dine-out<br><em>spot in Dubai.</em></h1>
+    <p class="hero-sub" style="margin-top:16px;">Find your perfect restaurant, powered by real customer reviews.</p>
+  </div>
+
+  <form class="finder" id="finderForm">
+    <div class="finder-fields">
+      <div class="field">
+        <label for="areaInput">Area <span style="color:var(--gold)">*</span></label>
+        <input id="areaInput" type="text" placeholder="e.g. Dubai Marina" autofocus required>
+      </div>
+      <div class="finder-divider"></div>
+      <div class="field">
+        <label for="cuisineInput">Cuisine</label>
+        <input id="cuisineInput" type="text" list="cuisineList" placeholder="Any cuisine" autocomplete="off">
+        <datalist id="cuisineList">
+          <option value="Emirati">
+          <option value="Lebanese">
+          <option value="Indian">
+          <option value="Italian">
+          <option value="Japanese">
+          <option value="Chinese">
+          <option value="Turkish">
+          <option value="Mediterranean">
+          <option value="Seafood">
+          <option value="Steakhouse">
+          <option value="Filipino">
+          <option value="Thai">
+          <option value="French">
+          <option value="American">
+        </datalist>
+      </div>
+      <div class="finder-divider"></div>
+      <div class="field">
+        <label for="budgetInput">Budget per person (AED)</label>
+        <input id="budgetInput" type="number" placeholder="Any" min="0" step="10">
+      </div>
+    </div>
+    <button type="submit" class="finder-submit" id="submitBtn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <span id="submitLabel">Find My Spot</span>
+    </button>
+  </form>
+
+  <p class="hint">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 2"/></svg>
+    Takes a few seconds — we analyze the latest guest reviews live.
+  </p>
+</div>
+
+<footer>© 2026 Dine Dubai — A guest-sentiment dining guide.</footer>
+
+<script>
+(function(){
+  "use strict";
+  const form = document.getElementById("finderForm");
+  const btn = document.getElementById("submitBtn");
+  const label = document.getElementById("submitLabel");
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const area = document.getElementById("areaInput").value.trim();
+    if(!area) return;
+    btn.classList.add("is-loading");
+    label.textContent = "Searching…";
+    // In the real app: navigate to the results page with these params, e.g.
+    // window.location.href = `/results?area=${encodeURIComponent(area)}&cuisine=...&budget=...`;
+    setTimeout(() => {
+      label.textContent = "Find My Spot";
+      btn.classList.remove("is-loading");
+      alert("Preview only — this would take you to the Results page with:\n\nArea: " + area +
+            "\nCuisine: " + (document.getElementById("cuisineInput").value || "Any") +
+            "\nBudget: " + (document.getElementById("budgetInput").value || "Any"));
+    }, 700);
+  });
+})();
+</script>
