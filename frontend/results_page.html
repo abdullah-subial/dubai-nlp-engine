@@ -206,7 +206,11 @@ a{color:inherit; text-decoration:none;}
   background:var(--cream); border:1px solid var(--line-soft); border-radius:14px;
   padding:16px 18px; display:flex; align-items:flex-start; gap:14px; flex:1;
 }
-.review-quote{font-size:0.92rem; line-height:1.55; color:#4a3138; flex:1;}
+.review-quote{
+  font-size:0.92rem; line-height:1.55; color:#4a3138; flex:1;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow:hidden;
+}
 .review-rating{font-weight:700; color:var(--gold); font-size:0.82rem; white-space:nowrap;}
 
 /* ============ MARKET INSIGHTS: charts, callouts, data table ============ */
@@ -228,7 +232,7 @@ a{color:inherit; text-decoration:none;}
 .gem-note b{color:var(--ink); font-weight:700;}
 
 .table-scroll{overflow-x:auto;}
-.data-table{width:100%; border-collapse:collapse; font-size:0.86rem; min-width:840px;}
+.data-table{width:100%; border-collapse:collapse; font-size:0.86rem; min-width:1040px;}
 .data-table th{text-align:left; padding:10px 14px; font-size:0.7rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); border-bottom:2px solid var(--line); white-space:nowrap;}
 .data-table td{padding:12px 14px; border-bottom:1px solid var(--line-soft); white-space:nowrap;}
 .data-table tr:hover td{background:var(--cream);}
@@ -275,6 +279,7 @@ a{color:inherit; text-decoration:none;}
 .card-body{padding:22px; padding-top:14px; display:flex; flex-direction:column; gap:12px; flex:1;}
 .card-name{font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:1.1rem; color:var(--maroon-ink); line-height:1.2;}
 .card-cuisine{font-size:0.78rem; color:var(--muted); margin-top:2px;}
+.card-address{font-size:0.76rem; color:var(--muted); margin-top:3px; line-height:1.35;}
 .card-meta{display:flex; gap:14px; font-size:0.82rem; color:var(--ink); font-weight:600;}
 .card-meta .gold{color:var(--gold); font-weight:700;}
 .card-dish{font-family:'Fraunces',serif; font-style:italic; color:var(--maroon); font-size:1rem; border-top:1px dashed var(--line); padding-top:10px;}
@@ -495,7 +500,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
           <div class="card fade-in" style="animation-delay:${i*60}ms">
             <div class="card-band"><div class="score-chip"><b>${r.model_score}</b><span>Score</span></div></div>
             <div class="card-body">
-              <div><div class="card-name">${r.restaurant_name}</div><div class="card-cuisine">${r.cuisine}</div></div>
+              <div><div class="card-name">${r.restaurant_name}</div><div class="card-cuisine">${r.cuisine}</div><div class="card-address">${r.address||''}</div></div>
               <div class="card-meta">
                 <span>${r.avg_google_rating} <span class="gold">★</span></span>
                 <span>${r.price_range}</span>
@@ -508,6 +513,16 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
       </div>`;
   }
 
+  // Deterministic pseudo-random offset from a string seed, so the same
+  // restaurant always jitters the same way across reloads instead of
+  // jumping around -- used only to visually separate overlapping bubbles;
+  // tooltips always show the true, unjittered values.
+  function seededJitter(str, amplitude){
+    let h = 0;
+    for(let i=0;i<str.length;i++){ h = (h*31 + str.charCodeAt(i)) >>> 0; }
+    return ((h % 1000) / 1000 - 0.5) * amplitude;
+  }
+
   let charts = {};
   function renderCharts(results, showCuisineChart, hiddenGem){
     if (typeof Chart === "undefined") {
@@ -518,10 +533,21 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     charts.scatter = new Chart(document.getElementById('scatterChart'), {
       type:'bubble',
       data:{ datasets:[{
-        data: results.map(r=>({x:r.price_numeric, y:r.model_score, r:Math.max(6, Math.sqrt(r.total_google_ratings)/6), name:r.restaurant_name})),
+        data: results.map(r=>{
+          const trueX = r.price_numeric_max || r.price_numeric;
+          const trueY = r.model_score;
+          return {
+            x: trueX + seededJitter(r.restaurant_name + '|x', 10),
+            y: Math.min(100, Math.max(0, trueY + seededJitter(r.restaurant_name + '|y', 2.5))),
+            trueX, trueY,
+            r: Math.max(6, Math.sqrt(r.total_google_ratings)/6),
+            name: r.restaurant_name
+          };
+        }),
         backgroundColor: results.map(r => {
           if (hiddenGem && r.restaurant_name === hiddenGem.restaurant_name) return '#1f7a5c';
-          return (r.model_score >= 82 && r.price_numeric <= 120) ? 'rgba(217,142,40,0.8)' : 'rgba(114,28,59,0.55)';
+          const priceMax = r.price_numeric_max || r.price_numeric;
+          return (r.model_score >= 82 && priceMax <= 120) ? 'rgba(217,142,40,0.8)' : 'rgba(114,28,59,0.55)';
         }),
         borderColor: results.map(r => (hiddenGem && r.restaurant_name === hiddenGem.restaurant_name) ? '#d98e28' : '#fffdfb'),
         borderWidth: results.map(r => (hiddenGem && r.restaurant_name === hiddenGem.restaurant_name) ? 3 : 1.5),
@@ -531,7 +557,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
         responsive:true, maintainAspectRatio:false,
         plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:(ctx)=>{
           const isGem = hiddenGem && ctx.raw.name === hiddenGem.restaurant_name;
-          return `${isGem ? '★ ' : ''}${ctx.raw.name}: AED ${ctx.raw.x}, Score ${ctx.raw.y}`;
+          return `${isGem ? '★ ' : ''}${ctx.raw.name}: AED ${Math.round(ctx.raw.trueX)}, Score ${Math.round(ctx.raw.trueY)}`;
         } } } },
         scales:{
           x:{ title:{display:true, text:'Price per person (AED)', color:'#78616b'}, grid:{color:'#f0e4dc'}, ticks:{color:'#78616b'} },
@@ -585,6 +611,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     const rows = sorted.map(r => `
       <tr>
         <td class="rname">${r.restaurant_name}</td>
+        <td>${r.address||''}</td>
         <td>${r.cuisine}</td>
         <td class="num">${r.model_score}</td>
         <td class="num">${r.avg_google_rating}★</td>
@@ -594,7 +621,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
       </tr>`).join('');
     document.getElementById('dataTable').innerHTML = `
       <thead><tr>
-        <th>Restaurant</th><th>Cuisine</th><th>Model Score</th><th>Google Rating</th><th>Ratings</th>
+        <th>Restaurant</th><th>Address</th><th>Cuisine</th><th>Model Score</th><th>Google Rating</th><th>Ratings</th>
         <th>Google Review Sentiment</th><th>Price Range</th>
       </tr></thead>
       <tbody>${rows}</tbody>`;

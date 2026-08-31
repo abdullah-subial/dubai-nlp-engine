@@ -1,5 +1,6 @@
 import os
 import time
+import threading
 import nltk
 from collections import Counter
 
@@ -9,7 +10,7 @@ import requests
 import torch
 import spacy
 from spacy.cli import download
-from transformers import pipeline
+from transformers import pipeline, AutoModelForSequenceClassification, AutoTokenizer
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
@@ -77,13 +78,28 @@ sentiment_analyzer = pipeline(
 
 # Zero-shot aspect classifier (food/service/price/ambiance), replacing fixed
 # keyword lists so paraphrases are still picked up. Loaded once at startup.
+# Uses a small distilbert-based MNLI model (much faster than the original
+# distilbart-mnli-12-3 on CPU) and, when running on CPU, dynamic int8
+# quantization on top of that for a further 2-4x speedup with only a
+# small, usually negligible accuracy cost -- this was the single biggest
+# latency contributor in the pipeline (~2:40/search before this change).
 ASPECT_LABELS = ["food quality", "service quality", "price or value", "ambiance"]
 ASPECT_CONFIDENCE_THRESHOLD = 0.5
+ASPECT_MODEL_NAME = "typeform/distilbert-base-uncased-mnli"
+
+_aspect_tokenizer = AutoTokenizer.from_pretrained(ASPECT_MODEL_NAME, token=HF_TOKEN)
+_aspect_model = AutoModelForSequenceClassification.from_pretrained(ASPECT_MODEL_NAME, token=HF_TOKEN)
+
+if _device == -1:
+    _aspect_model = torch.quantization.quantize_dynamic(
+        _aspect_model, {torch.nn.Linear}, dtype=torch.qint8
+    )
+
 aspect_classifier = pipeline(
     "zero-shot-classification",
-    model="valhalla/distilbart-mnli-12-3",
+    model=_aspect_model,
+    tokenizer=_aspect_tokenizer,
     device=_device,
-    token=HF_TOKEN,
 )
 
 
@@ -149,12 +165,14 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=1):
         min_p, q1, q2, q3 = 25.0, 60.0, 150.0, 350.0
 
     quartile_map = {
-        "PRICE_LEVEL_INEXPENSIVE": {"min": min_p, "label": f"AED {int(min_p)} - {int(q1)}"},
-        "PRICE_LEVEL_MODERATE": {"min": q1, "label": f"AED {int(q1)} - {int(q2)}"},
-        "PRICE_LEVEL_EXPENSIVE": {"min": q2, "label": f"AED {int(q2)} - {int(q3)}"},
-        "PRICE_LEVEL_VERY_EXPENSIVE": {"min": q3, "label": f"AED {int(q3)}+"},
+        "PRICE_LEVEL_INEXPENSIVE": {"min": min_p, "max": q1, "label": f"AED {int(min_p)} - {int(q1)}"},
+        "PRICE_LEVEL_MODERATE": {"min": q1, "max": q2, "label": f"AED {int(q1)} - {int(q2)}"},
+        "PRICE_LEVEL_EXPENSIVE": {"min": q2, "max": q3, "label": f"AED {int(q2)} - {int(q3)}"},
+        # Open-ended top bracket -- Google reports no upper number here, so
+        # 1.5x the 75th percentile is a rough stand-in for plotting purposes.
+        "PRICE_LEVEL_VERY_EXPENSIVE": {"min": q3, "max": q3 * 1.5, "label": f"AED {int(q3)}+"},
     }
-    UNKNOWN_PRICE = {"min": q2, "label": "N/A"}
+    UNKNOWN_PRICE = {"min": q2, "max": q2, "label": "N/A"}
 
     parsed_reviews = []
     exact_price_count = 0
@@ -181,6 +199,7 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=1):
             start = float(p_range["startPrice"]["units"])
             end = p_range.get("endPrice", {}).get("units", "")
             min_price = start
+            max_price = float(end) if end else start * 1.5
             price_display = f"AED {int(start)} - {int(end)}" if end else f"AED {int(start)}+"
             price_source = "Verified Google Price"
             is_exact = True
@@ -188,6 +207,7 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=1):
             raw_level = place.get("priceLevel")
             meta = quartile_map.get(raw_level, UNKNOWN_PRICE)
             min_price = meta["min"]
+            max_price = meta["max"]
             price_display = meta["label"]
             price_source = "Area Quartile Estimate" if raw_level in quartile_map else "Unknown (Area Median Used)"
             is_exact = False
@@ -211,6 +231,7 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=1):
                     "cuisine": cuisine_type,
                     "price_range": price_display,
                     "price_numeric": min_price,
+                    "price_numeric_max": max_price,
                     "price_source": price_source,
                     "review_rating": review.get("rating"),
                     "review_text": text,
@@ -480,6 +501,7 @@ def generate_restaurant_insights(df_analyzed):
         lng = group["longitude"].iloc[0] if "longitude" in group.columns else None
         user_rating_count = group["user_rating_count"].iloc[0] if "user_rating_count" in group.columns else 0
         price_numeric = group["price_numeric"].iloc[0] if "price_numeric" in group.columns else None
+        price_numeric_max = group["price_numeric_max"].iloc[0] if "price_numeric_max" in group.columns else price_numeric
         address = group["formatted_address"].iloc[0] if "formatted_address" in group.columns else None
         model_score = group["model_score"].iloc[0] if "model_score" in group.columns else 0.0
 
@@ -505,6 +527,7 @@ def generate_restaurant_insights(df_analyzed):
             "cuisine": cuisine,
             "price_range": price_range,
             "price_numeric": price_numeric,
+            "price_numeric_max": price_numeric_max,
             "address": address,
             "avg_google_rating": avg_rating,
             "total_google_ratings": user_rating_count,
@@ -567,6 +590,14 @@ class TTLCache:
 
 recommendation_cache = TTLCache(ttl_seconds=6 * 3600)
 
+POPULAR_AREAS = [
+    "Dubai Marina", "Downtown Dubai", "Jumeirah Beach Residence (JBR)", "Business Bay",
+    "Palm Jumeirah", "Deira", "Bur Dubai", "Al Barsha", "Jumeirah Lake Towers (JLT)",
+    "Dubai Hills Estate", "DIFC", "Al Quoz", "City Walk", "La Mer", "Umm Suqeim",
+    "Al Karama", "Satwa", "Mirdif", "Arabian Ranches", "Dubai Silicon Oasis",
+    "International City", "Discovery Gardens",
+]
+
 
 def _aggregate_stats(df_scorecard):
     return {
@@ -619,6 +650,21 @@ def get_recommendations(area, cuisine="", max_budget=None, use_cache=True):
         recommendation_cache.set(cache_key, result)
 
     return result
+
+
+def _prewarm_cache_loop():
+    refresh_interval = max(60, recommendation_cache.ttl_seconds - 300)
+    while True:
+        for area in POPULAR_AREAS:
+            try:
+                get_recommendations(area=area, cuisine="", max_budget=None, use_cache=True)
+            except Exception as exc:
+                print(f"[prewarm] failed for {area!r}: {exc}")
+            time.sleep(5)  # small gap between areas so we don't hammer Google/HF back-to-back
+        time.sleep(refresh_interval)
+
+
+threading.Thread(target=_prewarm_cache_loop, daemon=True).start()
 
 
 # ==========================================
