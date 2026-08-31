@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+pandas
+numpy
+requests
+torch
+spacy
+transformers
+nltk

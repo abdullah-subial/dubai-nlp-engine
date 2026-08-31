@@ -238,15 +238,12 @@ footer{
     if(!area) return;
     btn.classList.add("is-loading");
     label.textContent = "Searching…";
-    // In the real app: navigate to the results page with these params, e.g.
-    // window.location.href = `/results?area=${encodeURIComponent(area)}&cuisine=...&budget=...`;
-    setTimeout(() => {
-      label.textContent = "Find My Spot";
-      btn.classList.remove("is-loading");
-      alert("Preview only — this would take you to the Results page with:\n\nArea: " + area +
-            "\nCuisine: " + (document.getElementById("cuisineInput").value || "Any") +
-            "\nBudget: " + (document.getElementById("budgetInput").value || "Any"));
-    }, 700);
+    const cuisine = document.getElementById("cuisineInput").value.trim();
+    const budget = document.getElementById("budgetInput").value.trim();
+    const params = new URLSearchParams({ area });
+    if(cuisine) params.set("cuisine", cuisine);
+    if(budget) params.set("budget", budget);
+    window.location.href = `/results?${params.toString()}`;
   });
 })();
 </script>
