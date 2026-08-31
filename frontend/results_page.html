@@ -358,30 +358,13 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
 (function(){
   "use strict";
 
-  // ---------------------------------------------------------------
-  // Mock dataset shaped like a real /api/recommend response, extended
-  // with model_score and address (both needed by this redesign) --
-  // the real backend already computes model_score; address would come
-  // straight from the Places API's formattedAddress field.
-  // ---------------------------------------------------------------
-  const MOCK_DB = {
-    "dubai marina": [
-      {restaurant_name:"Al Mansaf House", address:"The Walk, Dubai Marina, Dubai", latitude:25.0805, longitude:55.1403, cuisine:"Jordanian", price_range:"AED 90 - 160", price_numeric:90, model_score:93, aspect_sentiment_score:95, price_value_score:88, negativity_risk_score:3, avg_google_rating:4.7, total_google_ratings:1840, positive_sentiment_pct:94, reviews_analyzed:5, famous_dish:"Lamb Ouzi", vibe_check:"Warm, Generous, Authentic, Bustling, Fragrant, Hospitable, Traditional, Lively, Homely, Rich, Spiced, Communal, Welcoming", recent_3_reviews:[{review_text:"Ordered the lamb ouzi for the table — fall-off-the-bone and the rice was perfectly spiced.", review_rating:5},{review_text:"Staff remembered our order from last time. Small touches like that matter.", review_rating:5},{review_text:"Busy on weekends, worth the short wait.", review_rating:4}]},
-      {restaurant_name:"Bussola", address:"Le Royal Meridien, Dubai Marina, Dubai", latitude:25.0776, longitude:55.1391, cuisine:"Italian", price_range:"AED 180 - 320", price_numeric:180, model_score:90, aspect_sentiment_score:90, price_value_score:78, negativity_risk_score:5, avg_google_rating:4.6, total_google_ratings:2533, positive_sentiment_pct:91, reviews_analyzed:5, famous_dish:"Seafood Linguine", vibe_check:"Romantic, Breezy, Elegant, Scenic, Relaxed, Charming, Intimate, Waterfront, Stylish, Serene, Refined", recent_3_reviews:[{review_text:"Marina view at sunset, the linguine was worth every dirham.", review_rating:5},{review_text:"A bit steep for what you get, but the atmosphere carries it.", review_rating:4},{review_text:"Perfect for an anniversary dinner.", review_rating:5}]},
-      {restaurant_name:"Zheng He's", address:"Marina Walk, Dubai Marina, Dubai", latitude:25.0742, longitude:55.1355, cuisine:"Chinese", price_range:"AED 150 - 260", price_numeric:150, model_score:85, aspect_sentiment_score:86, price_value_score:75, negativity_risk_score:8, avg_google_rating:4.5, total_google_ratings:980, positive_sentiment_pct:88, reviews_analyzed:5, famous_dish:"Peking Duck", vibe_check:"Refined, Quiet, Attentive, Traditional, Polished, Serene, Formal, Aromatic, Graceful", recent_3_reviews:[{review_text:"Best peking duck I've had outside Beijing.", review_rating:5},{review_text:"Service was a little slow on a busy night.", review_rating:3},{review_text:"Loved the tea pairing.", review_rating:5}]},
-      {restaurant_name:"Marina Social", address:"Marina Promenade, Dubai Marina, Dubai", latitude:25.0768, longitude:55.1327, cuisine:"European", price_range:"AED 140 - 240", price_numeric:140, model_score:79, aspect_sentiment_score:80, price_value_score:70, negativity_risk_score:12, avg_google_rating:4.3, total_google_ratings:1210, positive_sentiment_pct:82, reviews_analyzed:5, famous_dish:"Truffle Risotto", vibe_check:"Trendy, Lively, Chic, Social, Buzzy, Modern, Vibrant, Fashionable", recent_3_reviews:[{review_text:"Recommend the truffle risotto, very generous portion.", review_rating:4},{review_text:"Great for groups, gets loud after 9pm.", review_rating:4},{review_text:"Cocktails were the real highlight.", review_rating:4}]},
-      {restaurant_name:"Sunset Grill Co.", address:"Marina Walk, Dubai Marina, Dubai", latitude:25.0721, longitude:55.1301, cuisine:"Steakhouse", price_range:"AED 200 - 380", price_numeric:200, model_score:70, aspect_sentiment_score:72, price_value_score:60, negativity_risk_score:18, avg_google_rating:4.1, total_google_ratings:640, positive_sentiment_pct:75, reviews_analyzed:5, famous_dish:"Tomahawk Steak", vibe_check:"Bold, Smoky, Confident, Upscale, Robust, Masculine, Assertive, Rich", recent_3_reviews:[{review_text:"Tomahawk was cooked exactly as requested.", review_rating:5},{review_text:"A bit overpriced for the sides.", review_rating:3},{review_text:"Great wine list.", review_rating:4}]},
-      {restaurant_name:"Noor Café", address:"Marina Plaza, Dubai Marina, Dubai", latitude:25.0791, longitude:55.1368, cuisine:"Emirati", price_range:"AED 45 - 90", price_numeric:45, model_score:84, aspect_sentiment_score:88, price_value_score:90, negativity_risk_score:6, avg_google_rating:4.4, total_google_ratings:410, positive_sentiment_pct:86, reviews_analyzed:5, famous_dish:"Chicken Machboos", vibe_check:"Cozy, Homely, Friendly, Unpretentious, Comforting, Down-to-earth, Warm, Familiar", recent_3_reviews:[{review_text:"Tastes like home cooking, incredible value.", review_rating:5},{review_text:"Try the machboos, portions are huge.", review_rating:5},{review_text:"Simple decor but the food does the talking.", review_rating:4}]},
-      {restaurant_name:"The Fig Tree", address:"Marina Walk, Dubai Marina, Dubai", latitude:25.0755, longitude:55.1340, cuisine:"Mediterranean", price_range:"AED 110 - 190", price_numeric:110, model_score:87, aspect_sentiment_score:87, price_value_score:82, negativity_risk_score:7, avg_google_rating:4.5, total_google_ratings:760, positive_sentiment_pct:89, reviews_analyzed:5, famous_dish:"Grilled Halloumi Mezze", vibe_check:"Bright, Fresh, Airy, Wholesome, Sunny, Casual, Vibrant, Zesty", recent_3_reviews:[{review_text:"Fresh mezze spread, halloumi was perfectly grilled.", review_rating:5},{review_text:"Lovely outdoor seating by the marina walk.", review_rating:4},{review_text:"Great for a light lunch.", review_rating:4}]},
-      {restaurant_name:"Anise Lounge", address:"Marina Plaza, Dubai Marina, Dubai", latitude:25.0733, longitude:55.1315, cuisine:"Turkish", price_range:"AED 130 - 210", price_numeric:130, model_score:76, aspect_sentiment_score:78, price_value_score:68, negativity_risk_score:14, avg_google_rating:4.2, total_google_ratings:530, positive_sentiment_pct:80, reviews_analyzed:5, famous_dish:"Adana Kebab", vibe_check:"Smoky, Social, Warm, Nightlife, Buzzy, Late-night, Convivial", recent_3_reviews:[{review_text:"Adana kebab had great char, very juicy.", review_rating:4},{review_text:"Shisha lounge gets crowded late.", review_rating:4},{review_text:"Good but a bit noisy for conversation.", review_rating:3}]}
-    ],
-    "downtown dubai": [
-      {restaurant_name:"At.mosphere", address:"Burj Khalifa, Downtown Dubai, Dubai", latitude:25.1972, longitude:55.2744, cuisine:"Modern European", price_range:"AED 350 - 600", price_numeric:350, model_score:89, aspect_sentiment_score:89, price_value_score:65, negativity_risk_score:6, avg_google_rating:4.6, total_google_ratings:3210, positive_sentiment_pct:90, reviews_analyzed:5, famous_dish:"Wagyu Tenderloin", vibe_check:"Dazzling, Iconic, Elegant, Unforgettable, Grand, Luxurious, Breathtaking, Exclusive, Majestic", recent_3_reviews:[{review_text:"The view alone is worth it, the wagyu was exceptional too.", review_rating:5},{review_text:"Pricey but it's a once-in-a-lifetime kind of place.", review_rating:5},{review_text:"Book weeks ahead for sunset seating.", review_rating:4}]},
-      {restaurant_name:"Karak House", address:"Souk Al Bahar, Downtown Dubai, Dubai", latitude:25.1893, longitude:55.2708, cuisine:"Emirati", price_range:"AED 30 - 60", price_numeric:30, model_score:86, aspect_sentiment_score:87, price_value_score:92, negativity_risk_score:5, avg_google_rating:4.5, total_google_ratings:920, positive_sentiment_pct:89, reviews_analyzed:5, famous_dish:"Chicken Machboos", vibe_check:"Casual, Cheerful, Fast, Authentic, Friendly, Quick, Bustling, Down-to-earth", recent_3_reviews:[{review_text:"Best karak in the district, plus the machboos is fantastic.", review_rating:5},{review_text:"Quick service even during rush hour.", review_rating:4},{review_text:"Great value for downtown prices.", review_rating:5}]}
-    ]
-  };
-
   const $ = (sel) => document.querySelector(sel);
+
+  function escapeHtml(str){
+    const div = document.createElement('div');
+    div.textContent = String(str == null ? '' : str);
+    return div.innerHTML;
+  }
 
   function animateCount(el, target, suffix){
     const dur = 900, start = performance.now();
@@ -691,53 +674,68 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     $("#methodologySection").innerHTML = '';
   }
 
+  function clearSections(){
+    $("#topPickSection").innerHTML = '';
+    $("#otherSection").innerHTML = '';
+    $("#insightsSection").innerHTML = '';
+    $("#methodologySection").innerHTML = '';
+  }
+
   function runSearch(area, cuisine, budget){
     $("#pageTitle").textContent = `Spots in ${area}.`;
-    $("#querySummary").innerHTML = `Showing results for <b>${area}</b>${cuisine?` <span class="sep">·</span> <b>${cuisine}</b>`:''}${budget?` <span class="sep">·</span> <b>Under AED ${budget}</b>`:''} <span class="edit-link" id="editLink"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit</span>`;
+    $("#querySummary").innerHTML = `Showing results for <b>${escapeHtml(area)}</b>${cuisine?` <span class="sep">·</span> <b>${escapeHtml(cuisine)}</b>`:''}${budget?` <span class="sep">·</span> <b>Under AED ${escapeHtml(budget)}</b>`:''} <span class="edit-link" id="editLink"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit</span>`;
     renderLoading();
-    setTimeout(() => {
-      const key = area.trim().toLowerCase();
-      let results = MOCK_DB[key] || [];
-      if(cuisine && cuisine.trim()) results = results.filter(r => r.cuisine.toLowerCase().includes(cuisine.trim().toLowerCase()));
-      if(budget) results = results.filter(r => r.price_numeric <= Number(budget));
 
-      if(!results.length){
-        $("#statsSection").innerHTML = `<div class="state-msg"><div class="big">No spots found in ${area}.</div><div>Try a nearby area, or widen your budget.</div></div>`;
-        $("#transparencyNote").innerHTML = `No matches for this search.`;
-        return;
-      }
+    const params = new URLSearchParams({ area });
+    if(cuisine) params.set("cuisine", cuisine);
+    if(budget) params.set("budget", budget);
 
-      const sorted = [...results].sort((a,b)=>b.model_score - a.model_score);
-      const top = sorted[0];
-      const rest = sorted.slice(1, 4); // next top 3 only
+    fetch(`/api/recommend?${params.toString()}`)
+      .then(res => {
+        if(!res.ok) throw new Error(`Server returned ${res.status}`);
+        return res.json();
+      })
+      .then(data => {
+        const results = data.restaurants || [];
 
-      const stats = {
-        restaurants_analyzed: results.length,
-        reviews_analyzed: results.reduce((s,r)=>s+r.reviews_analyzed,0),
-        avg_google_rating: +(results.reduce((s,r)=>s+r.avg_google_rating,0)/results.length).toFixed(1),
-        avg_sentiment_pct: +(results.reduce((s,r)=>s+r.positive_sentiment_pct,0)/results.length).toFixed(0),
-        avg_spend_per_person: results.reduce((s,r)=>s+r.price_numeric,0)/results.length
-      };
+        if(!results.length){
+          $("#statsSection").innerHTML = `<div class="state-msg"><div class="big">No spots found in ${escapeHtml(area)}.</div><div>Try a nearby area, or widen your budget.</div></div>`;
+          $("#transparencyNote").textContent = data.summary || "No matches for this search.";
+          clearSections();
+          return;
+        }
 
-      renderStats(stats);
-      renderTopPick(top);
-      renderOthers(rest);
-      try {
-        renderInsights(results, cuisine);
-      } catch (err) {
-        console.error("Market Insights failed to render:", err);
-        $("#insightsSection").innerHTML = `<div class="section-heading"><span class="spark">✦</span><h2>Market Insights</h2></div><div class="state-msg">Charts couldn't load in this preview (${err.message}).</div>`;
-      }
-      renderMethodology();
-      $("#transparencyNote").innerHTML = `Analyzed <b>${results.length}</b> venue${results.length!==1?'s':''} in <b>${area}</b>.`;
-    }, 550);
+        const sorted = [...results].sort((a,b)=>b.model_score - a.model_score);
+        const top = sorted[0];
+        const rest = sorted.slice(1, 4); // next top 3 only
+
+        renderStats(data.stats);
+        renderTopPick(top);
+        renderOthers(rest);
+        try {
+          renderInsights(results, cuisine);
+        } catch (err) {
+          console.error("Market Insights failed to render:", err);
+          $("#insightsSection").innerHTML = `<div class="section-heading no-line"><span class="spark">✦</span><h2>Market Insights</h2></div><div class="state-msg">Charts couldn't load (${escapeHtml(err.message)}).</div>`;
+        }
+        renderMethodology();
+        $("#transparencyNote").textContent = data.summary || `Analyzed ${results.length} venue${results.length!==1?'s':''} in ${area}.`;
+      })
+      .catch(err => {
+        console.error("Failed to load recommendations:", err);
+        $("#statsSection").innerHTML = `<div class="state-msg"><div class="big">Something went wrong.</div><div>Could not reach the server (${escapeHtml(err.message)}). Please try again.</div></div>`;
+        $("#transparencyNote").textContent = "Search failed.";
+        clearSections();
+      });
   }
 
   document.getElementById("newSearchBtn").addEventListener("click", () => {
-    alert("Preview only — this would navigate back to Page 1 (the search page).");
+    window.location.href = "/";
   });
 
-  // Initial load, simulating arrival from Page 1 with area=Dubai Marina
-  runSearch("Dubai Marina", "", "");
+  // Initial load -- read area/cuisine/budget straight off the URL, as sent by Page 1's redirect
+  const initialParams = new URLSearchParams(window.location.search);
+  const initialArea = initialParams.get("area") || "Dubai Marina";
+  runSearch(initialArea, initialParams.get("cuisine") || "", initialParams.get("budget") || "");
 })();
 </script>
