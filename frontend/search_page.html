@@ -72,7 +72,7 @@ body::before{
 h1{
   margin:0;
   font-family:'Fraunces',serif;
-  font-size:clamp(2.4rem, 5.6vw, 4.2rem);
+  font-size:clamp(2.6rem, 6.2vw, 4.8rem);
   font-weight:600;
   line-height:1.04;
   letter-spacing:-0.01em;
@@ -85,9 +85,9 @@ h1 em{
   -webkit-background-clip:text; background-clip:text; color:transparent;
 }
 .hero-sub{
-  font-size:clamp(1.02rem,1.6vw,1.2rem);
+  font-size:clamp(1.1rem,1.8vw,1.35rem);
   color:var(--muted);
-  max-width:44ch;
+  max-width:48ch;
   line-height:1.5;
 }
 
@@ -95,14 +95,14 @@ h1 em{
 .finder{
   background:var(--paper);
   border:1px solid var(--line);
-  border-radius:22px;
-  padding:10px;
+  border-radius:26px;
+  padding:14px;
   box-shadow:0 24px 60px -24px rgba(74,18,38,0.28);
   width:100%;
-  max-width:720px;
+  max-width:960px;
   display:flex;
   flex-direction:column;
-  gap:4px;
+  gap:6px;
 }
 .finder-fields{
   display:grid;
@@ -110,31 +110,57 @@ h1 em{
   gap:4px;
 }
 .field{
-  display:flex; flex-direction:column; gap:3px;
-  padding:11px 18px;
-  border-radius:14px;
+  position:relative;
+  display:flex; flex-direction:column; gap:5px;
+  padding:16px 22px;
+  border-radius:16px;
   text-align:left;
   transition:background .15s ease;
 }
 .field:hover{background:rgba(114,28,59,0.04);}
 .field label{
-  font-size:0.66rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;
+  font-size:0.72rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;
   color:var(--maroon);
 }
 .field input{
   border:none; background:transparent; font-family:'Outfit',sans-serif;
-  font-size:1rem; font-weight:500; color:var(--ink); padding:2px 0; outline:none;
+  font-size:1.15rem; font-weight:500; color:var(--ink); padding:2px 0; outline:none;
   width:100%;
 }
 .field input::placeholder{color:#b7a6ac;}
-.finder-divider{width:1px; background:var(--line); margin:8px 0; align-self:stretch;}
+
+/* Custom suggestion dropdown -- replaces native <datalist>, which the
+   browser renders itself with no styling control and (in some browsers)
+   with no suggestions showing at all. */
+.suggest-list{
+  display:none;
+  position:absolute; top:calc(100% - 4px); left:10px; right:10px;
+  background:#f1ebe6;
+  border:1px solid var(--line);
+  border-radius:14px;
+  box-shadow:0 18px 36px -14px rgba(74,18,38,0.3);
+  max-height:260px; overflow-y:auto;
+  padding:6px;
+  z-index:50;
+}
+.suggest-list.open{display:block;}
+.suggest-item{
+  padding:10px 14px;
+  border-radius:9px;
+  font-size:0.95rem;
+  color:var(--ink);
+  cursor:pointer;
+}
+.suggest-item:hover, .suggest-item.active{background:rgba(114,28,59,0.1);}
+
+.finder-divider{width:1px; background:var(--line); margin:10px 0; align-self:stretch;}
 .finder-submit{
-  display:flex; align-items:center; justify-content:center; gap:8px;
+  display:flex; align-items:center; justify-content:center; gap:9px;
   background:var(--maroon); color:#fff8f0;
-  border:none; border-radius:14px;
+  border:none; border-radius:16px;
   width:100%;
-  padding:15px 0;
-  font-weight:700; font-size:0.98rem;
+  padding:20px 0;
+  font-weight:700; font-size:1.08rem;
   cursor:pointer; white-space:nowrap;
   transition:transform .18s ease, background .18s ease;
   box-shadow:0 10px 24px -10px rgba(114,28,59,0.55);
@@ -182,52 +208,14 @@ footer{
     <div class="finder-fields">
       <div class="field">
         <label for="areaInput">Area <span style="color:var(--gold)">*</span></label>
-        <input id="areaInput" type="text" list="areaList" placeholder="e.g. Dubai Marina" autofocus required autocomplete="off">
-        <datalist id="areaList">
-          <option value="Dubai Marina">
-          <option value="Downtown Dubai">
-          <option value="Jumeirah Beach Residence (JBR)">
-          <option value="Business Bay">
-          <option value="Palm Jumeirah">
-          <option value="Deira">
-          <option value="Bur Dubai">
-          <option value="Al Barsha">
-          <option value="Jumeirah Lake Towers (JLT)">
-          <option value="Dubai Hills Estate">
-          <option value="DIFC">
-          <option value="Al Quoz">
-          <option value="City Walk">
-          <option value="La Mer">
-          <option value="Umm Suqeim">
-          <option value="Al Karama">
-          <option value="Satwa">
-          <option value="Mirdif">
-          <option value="Arabian Ranches">
-          <option value="Dubai Silicon Oasis">
-          <option value="International City">
-          <option value="Discovery Gardens">
-        </datalist>
+        <input id="areaInput" type="text" placeholder="e.g. Dubai Marina" autofocus required autocomplete="off">
+        <div class="suggest-list" id="areaSuggest"></div>
       </div>
       <div class="finder-divider"></div>
       <div class="field">
         <label for="cuisineInput">Cuisine</label>
-        <input id="cuisineInput" type="text" list="cuisineList" placeholder="Any cuisine" autocomplete="off">
-        <datalist id="cuisineList">
-          <option value="Emirati">
-          <option value="Lebanese">
-          <option value="Indian">
-          <option value="Italian">
-          <option value="Japanese">
-          <option value="Chinese">
-          <option value="Turkish">
-          <option value="Mediterranean">
-          <option value="Seafood">
-          <option value="Steakhouse">
-          <option value="Filipino">
-          <option value="Thai">
-          <option value="French">
-          <option value="American">
-        </datalist>
+        <input id="cuisineInput" type="text" placeholder="Any cuisine" autocomplete="off">
+        <div class="suggest-list" id="cuisineSuggest"></div>
       </div>
       <div class="finder-divider"></div>
       <div class="field">
@@ -255,6 +243,76 @@ footer{
   const form = document.getElementById("finderForm");
   const btn = document.getElementById("submitBtn");
   const label = document.getElementById("submitLabel");
+
+  // Prefill from the URL when arriving via the results page's "Edit" link
+  const initParams = new URLSearchParams(window.location.search);
+  if(initParams.get("area")) document.getElementById("areaInput").value = initParams.get("area");
+  if(initParams.get("cuisine")) document.getElementById("cuisineInput").value = initParams.get("cuisine");
+  if(initParams.get("budget")) document.getElementById("budgetInput").value = initParams.get("budget");
+
+  const AREA_OPTIONS = [
+    "Dubai Marina", "Downtown Dubai", "Jumeirah Beach Residence (JBR)", "Business Bay",
+    "Palm Jumeirah", "Deira", "Bur Dubai", "Al Barsha", "Jumeirah Lake Towers (JLT)",
+    "Dubai Hills Estate", "DIFC", "Al Quoz", "City Walk", "La Mer", "Umm Suqeim",
+    "Al Karama", "Satwa", "Mirdif", "Arabian Ranches", "Dubai Silicon Oasis",
+    "International City", "Discovery Gardens",
+  ];
+  const CUISINE_OPTIONS = [
+    "Emirati", "Lebanese", "Indian", "Italian", "Japanese", "Chinese", "Turkish",
+    "Mediterranean", "Seafood", "Steakhouse", "Filipino", "Thai", "French", "American",
+  ];
+
+  function setupSuggest(inputId, listId, options){
+    const input = document.getElementById(inputId);
+    const list = document.getElementById(listId);
+
+    function render(){
+      const q = input.value.trim().toLowerCase();
+      const matches = q
+        ? options.filter(o => o.toLowerCase().includes(q))
+        : options;
+      if(!matches.length){ list.classList.remove("open"); list.innerHTML = ""; return; }
+      list.innerHTML = matches.map(o => `<div class="suggest-item">${o}</div>`).join("");
+      list.classList.add("open");
+    }
+
+    input.addEventListener("input", render);
+    input.addEventListener("focus", render);
+
+    list.addEventListener("mousedown", (e) => {
+      const item = e.target.closest(".suggest-item");
+      if(!item) return;
+      e.preventDefault();
+      input.value = item.textContent;
+      list.classList.remove("open");
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if(e.key === "Escape"){ list.classList.remove("open"); }
+      if(e.key === "Enter" && list.classList.contains("open")){
+        const first = list.querySelector(".suggest-item");
+        if(first){ e.preventDefault(); input.value = first.textContent; list.classList.remove("open"); }
+      }
+    });
+
+    document.addEventListener("click", (e) => {
+      if(!input.contains(e.target) && !list.contains(e.target)) list.classList.remove("open");
+    });
+  }
+
+  setupSuggest("areaInput", "areaSuggest", AREA_OPTIONS);
+  setupSuggest("cuisineInput", "cuisineSuggest", CUISINE_OPTIONS);
+
+  function resetSubmitButton(){
+    btn.classList.remove("is-loading");
+    label.textContent = "Find My Spot";
+  }
+
+  // Browsers restore this exact DOM state (including the "Searching..."
+  // spinner set right before navigating away) when returning via the back
+  // button, instead of a fresh load -- reset it unconditionally so the
+  // button never gets stuck mid-search on return.
+  window.addEventListener("pageshow", resetSubmitButton);
 
   form.addEventListener("submit", (e) => {
     e.preventDefault();

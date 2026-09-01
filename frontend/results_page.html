@@ -85,7 +85,8 @@ a{color:inherit; text-decoration:none;}
 .page-title p{color:var(--muted); font-size:0.95rem; margin-top:6px;}
 .page-title p b{color:var(--maroon);}
 
-.section{padding:30px 0;}
+.section{padding:24px 0;}
+.section:empty{padding:0;}
 
 /* Shared header format -- every section title matches the Top Pick heading */
 .section-heading{
@@ -117,7 +118,7 @@ a{color:inherit; text-decoration:none;}
 .stats.opt-gold .stat-band{background:linear-gradient(120deg, #d98e28, #b5701a 60%, #f0c987);}
 .stat-num{
   font-family:'Plus Jakarta Sans',sans-serif; font-weight:800;
-  font-size:clamp(2.5rem,3.3vw,3.2rem);
+  font-size:clamp(2.6rem,3.4vw,3.35rem);
   color:var(--maroon-ink); letter-spacing:-0.02em; line-height:1;
 }
 .stat-num .unit{font-size:0.4em; font-weight:700; color:var(--gold); margin-left:5px; vertical-align:middle;}
@@ -191,13 +192,13 @@ a{color:inherit; text-decoration:none;}
 
 .vibe-box{display:flex; flex-direction:column; height:100%;}
 .vibe-tags{
-  flex:1; display:flex; flex-wrap:wrap; align-content:flex-start; justify-content:flex-start;
-  gap:10px; margin-top:12px;
+  flex:1; display:flex; flex-wrap:wrap; align-content:space-evenly; justify-content:flex-start;
+  gap:13px; margin-top:12px;
 }
 .vibe-pill{
-  font-family:'Outfit',sans-serif; font-weight:700; font-size:0.92rem;
+  font-family:'Outfit',sans-serif; font-weight:700; font-size:1.05rem;
   color:var(--maroon); background:rgba(114,28,59,0.08);
-  border-radius:999px; padding:9px 20px;
+  border-radius:999px; padding:11px 23px;
 }
 
 .reviews-panel{display:flex; flex-direction:column; height:100%;}
@@ -219,25 +220,26 @@ a{color:inherit; text-decoration:none;}
 .insights-grid-3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:22px;}
 @media (max-width:1100px){ .insights-grid-3{grid-template-columns:1fr 1fr;} }
 @media (max-width:640px){ .insights-grid-3{grid-template-columns:1fr;} }
-.chart-card{background:var(--paper); border:1px solid var(--line); border-radius:20px; padding:24px;}
+.chart-card{background:var(--paper); border:1px solid var(--line); border-radius:20px; padding:24px; display:flex; flex-direction:column;}
 .chart-card-head{margin-bottom:16px;}
 .chart-title{font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:1.05rem; color:var(--maroon-ink);}
 .chart-sub{font-size:0.82rem; color:var(--muted); margin-top:3px;}
 .chart-canvas-wrap{height:280px; position:relative;}
-.chart-canvas-wrap.compact{height:190px;}
+.chart-canvas-wrap.compact{flex:1; min-height:220px; position:relative;}
 
 /* Minimal hidden-gem note -- a plain highlighted line, not a boxed callout */
 .gem-note{display:flex; align-items:baseline; gap:8px; font-size:0.86rem; color:var(--muted); margin-bottom:14px; line-height:1.4;}
-.gem-note .gem-star{color:var(--gold); font-size:0.95rem; flex-shrink:0;}
+.gem-note .gem-star-icon{width:14px; height:14px; flex-shrink:0; position:relative; top:2px;}
 .gem-note b{color:var(--ink); font-weight:700;}
 
-.table-scroll{overflow-x:auto;}
+.table-scroll{overflow-x:auto; overflow-y:auto; max-height:520px;}
 .data-table{width:100%; border-collapse:collapse; font-size:0.86rem; min-width:1040px;}
-.data-table th{text-align:left; padding:10px 14px; font-size:0.7rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); border-bottom:2px solid var(--line); white-space:nowrap;}
+.data-table th{text-align:left; padding:10px 14px; font-size:0.7rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); border-bottom:2px solid var(--line); white-space:nowrap; position:sticky; top:0; background:var(--paper); z-index:1;}
 .data-table td{padding:12px 14px; border-bottom:1px solid var(--line-soft); white-space:nowrap;}
 .data-table tr:hover td{background:var(--cream);}
 .data-table .rname{font-weight:700; color:var(--maroon-ink);}
 .data-table .num{font-variant-numeric:tabular-nums; font-weight:600;}
+.data-table .addr{max-width:220px; overflow:hidden; text-overflow:ellipsis; cursor:default;}
 
 /* ============ METHODOLOGY / TRUST PANEL ============ */
 .methodology{background:var(--paper); border:1px solid var(--line); border-radius:26px; padding:clamp(20px,2.2vw,30px);}
@@ -269,7 +271,7 @@ a{color:inherit; text-decoration:none;}
 .card:hover{transform:translateY(-4px); box-shadow:0 22px 40px -22px rgba(114,28,59,0.3); border-color:var(--gold-soft);}
 .card-band{height:64px; background:linear-gradient(120deg, var(--maroon), var(--maroon-ink) 60%, var(--rose)); position:relative;}
 .card-band .score-chip{
-  position:absolute; right:14px; bottom:-18px;
+  position:absolute; right:14px; top:14px;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
   width:46px; height:46px; border-radius:50%; background:var(--gold); color:var(--maroon-ink);
   box-shadow:0 6px 14px -4px rgba(0,0,0,0.35);
@@ -279,7 +281,8 @@ a{color:inherit; text-decoration:none;}
 .card-body{padding:22px; padding-top:14px; display:flex; flex-direction:column; gap:12px; flex:1;}
 .card-name{font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:1.1rem; color:var(--maroon-ink); line-height:1.2;}
 .card-cuisine{font-size:0.78rem; color:var(--muted); margin-top:2px;}
-.card-address{font-size:0.76rem; color:var(--muted); margin-top:3px; line-height:1.35;}
+.card-address{display:flex; align-items:flex-start; gap:5px; font-size:0.76rem; color:var(--muted); margin-top:4px; line-height:1.35;}
+.card-address svg{width:12px; height:12px; color:var(--gold); flex-shrink:0; margin-top:2px;}
 .card-meta{display:flex; gap:14px; font-size:0.82rem; color:var(--ink); font-weight:600;}
 .card-meta .gold{color:var(--gold); font-weight:700;}
 .card-dish{font-family:'Fraunces',serif; font-style:italic; color:var(--maroon); font-size:1rem; border-top:1px dashed var(--line); padding-top:10px;}
@@ -297,9 +300,8 @@ a{color:inherit; text-decoration:none;}
 
 /* ============ FOOTER ============ */
 footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
-.footer-inner{max-width:var(--maxw); margin:0 auto; padding:56px clamp(20px,4vw,56px) 36px; display:grid; grid-template-columns:1.4fr 1fr 1fr 1.2fr; gap:40px;}
-@media (max-width:860px){ .footer-inner{grid-template-columns:1fr 1fr; row-gap:32px;} }
-@media (max-width:520px){ .footer-inner{grid-template-columns:1fr;} }
+.footer-inner{max-width:var(--maxw); margin:0 auto; padding:56px clamp(20px,4vw,56px) 36px; display:grid; grid-template-columns:1.4fr 1fr; gap:40px;}
+@media (max-width:640px){ .footer-inner{grid-template-columns:1fr; row-gap:32px;} }
 .footer-inner .wordmark{color:#fdf1e0;}
 .footer-blurb{font-size:0.85rem; line-height:1.6; color:#d7abb3; margin-top:14px; max-width:34ch;}
 .footer-heading{font-size:0.72rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:var(--gold-soft); margin-bottom:14px;}
@@ -343,14 +345,6 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     <div>
       <div class="wordmark">DINE<span class="dot"></span>DUBAI</div>
       <p class="footer-blurb">A guest-sentiment dining guide for Dubai — every recommendation is read from real Google reviews, not just star ratings.</p>
-    </div>
-    <div>
-      <div class="footer-heading">Explore</div>
-      <ul class="footer-links"><li><a href="#">Discover</a></li><li><a href="#">Top Tables</a></li><li><a href="#">Areas of Dubai</a></li></ul>
-    </div>
-    <div>
-      <div class="footer-heading">Company</div>
-      <ul class="footer-links"><li><a href="#">About</a></li><li><a href="#">For Restaurants</a></li><li><a href="#">Contact</a></li></ul>
     </div>
     <div>
       <div class="footer-heading">Methodology</div>
@@ -474,7 +468,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
           <div class="spotlight-bottom">
             <div class="vibe-box">
               <div class="panel-heading">Guest Vibe Check</div>
-              <div class="vibe-tags">${buildVibeTags(r.vibe_check)}</div>
+              <div class="vibe-tags">${buildVibeTags(r.vibe_check, 10)}</div>
             </div>
             <div class="reviews-panel">
               <div class="panel-heading" style="margin-bottom:12px;">Latest Reviews</div>
@@ -501,7 +495,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
           <div class="card fade-in" style="animation-delay:${i*60}ms">
             <div class="card-band"><div class="score-chip"><b>${r.model_score}</b><span>Score</span></div></div>
             <div class="card-body">
-              <div><div class="card-name">${r.restaurant_name}</div><div class="card-cuisine">${r.cuisine}</div><div class="card-address">${r.address||''}</div></div>
+              <div><div class="card-name">${r.restaurant_name}</div><div class="card-cuisine">Cuisine: ${r.cuisine}</div><div class="card-address"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>${r.address||''}</div></div>
               <div class="card-meta">
                 <span>${r.avg_google_rating} <span class="gold">★</span></span>
                 <span>${r.price_range}</span>
@@ -523,6 +517,33 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     for(let i=0;i<str.length;i++){ h = (h*31 + str.charCodeAt(i)) >>> 0; }
     return ((h % 1000) / 1000 - 0.5) * amplitude;
   }
+
+  // A single drawn 5-point star, reused both as the chart's hidden-gem
+  // marker and as the icon in the gem-note text, so the two visually match
+  // instead of a Unicode "★" next to Chart.js's built-in star primitive.
+  function makeStarIcon(size, color){
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const cx = size/2, cy = size/2, outerR = size/2 - 1, innerR = outerR/2.5;
+    let rot = Math.PI/2*3;
+    const step = Math.PI/5;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - outerR);
+    for(let i=0;i<5;i++){
+      ctx.lineTo(cx + Math.cos(rot)*outerR, cy + Math.sin(rot)*outerR);
+      rot += step;
+      ctx.lineTo(cx + Math.cos(rot)*innerR, cy + Math.sin(rot)*innerR);
+      rot += step;
+    }
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    const img = new Image();
+    img.src = canvas.toDataURL();
+    return img;
+  }
+  const GEM_STAR_ICON = makeStarIcon(22, '#d98e28');
 
   let charts = {};
   function renderCharts(results, showCuisineChart, hiddenGem){
@@ -552,7 +573,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
         }),
         borderColor: results.map(r => (hiddenGem && r.restaurant_name === hiddenGem.restaurant_name) ? '#d98e28' : '#fffdfb'),
         borderWidth: results.map(r => (hiddenGem && r.restaurant_name === hiddenGem.restaurant_name) ? 3 : 1.5),
-        pointStyle: results.map(r => (hiddenGem && r.restaurant_name === hiddenGem.restaurant_name) ? 'star' : 'circle')
+        pointStyle: results.map(r => (hiddenGem && r.restaurant_name === hiddenGem.restaurant_name) ? GEM_STAR_ICON : 'circle')
       }]},
       options:{
         responsive:true, maintainAspectRatio:false,
@@ -562,7 +583,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
         } } } },
         scales:{
           x:{ title:{display:true, text:'Price per person (AED)', color:'#78616b'}, grid:{color:'#f0e4dc'}, ticks:{color:'#78616b'} },
-          y:{ title:{display:true, text:'Model Score', color:'#78616b'}, grid:{color:'#f0e4dc'}, ticks:{color:'#78616b'}, min:0, max:100 }
+          y:{ title:{display:true, text:'Model Score', color:'#78616b'}, grid:{color:'#f0e4dc'}, ticks:{color:'#78616b'}, min:Math.max(0, Math.floor(Math.min(...results.map(r=>r.model_score))) - 5), max:100 }
         }
       }
     });
@@ -576,10 +597,22 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
       },
       options:{
         indexAxis:'y', responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{display:false} },
+        plugins:{
+          legend:{display:false},
+          tooltip:{ callbacks:{ title:(items)=> byScore[items[0].dataIndex].restaurant_name } }
+        },
         scales:{
           x:{ min:0, max:100, grid:{color:'#f0e4dc'}, ticks:{color:'#78616b'} },
-          y:{ grid:{display:false}, ticks:{color:'#2b1820', font:{weight:'600'}} }
+          y:{
+            grid:{display:false},
+            ticks:{
+              color:'#2b1820', font:{weight:'600'},
+              callback: function(value){
+                const label = this.getLabelForValue(value);
+                return label.length > 18 ? label.slice(0,18)+'…' : label;
+              }
+            }
+          }
         }
       }
     });
@@ -613,18 +646,18 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     const rows = sorted.map(r => `
       <tr>
         <td class="rname">${r.restaurant_name}</td>
-        <td>${r.address||''}</td>
         <td>${r.cuisine}</td>
         <td class="num">${r.model_score}</td>
         <td class="num">${r.avg_google_rating}★</td>
         <td class="num">${r.total_google_ratings.toLocaleString()}</td>
         <td class="num">${r.positive_sentiment_pct}%</td>
         <td>${r.price_range}</td>
+        <td class="addr" title="${escapeHtml(r.address||'')}">${r.address||''}</td>
       </tr>`).join('');
     document.getElementById(targetId).innerHTML = `
       <thead><tr>
-        <th>Restaurant</th><th>Address</th><th>Cuisine</th><th>Model Score</th><th>Google Rating</th><th>Ratings</th>
-        <th>Google Review Sentiment</th><th>Price Range</th>
+        <th>Restaurant</th><th>Cuisine</th><th>Model Score</th><th>Google Rating</th><th>Ratings</th>
+        <th>Google Review Sentiment</th><th>Price Range</th><th>Address</th>
       </tr></thead>
       <tbody>${rows}</tbody>`;
   }
@@ -645,28 +678,39 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     if(!results.length){ $("#insightsSection").innerHTML = ''; return; }
     const showCuisineChart = !cuisineFilter || !cuisineFilter.trim();
     const hiddenGem = computeHiddenGem(results);
+
+    const hiddenGemCard = `
+      <div class="chart-card">
+        <div class="chart-card-head">
+          <div class="chart-title">Hidden Gem Finder</div>
+          <div class="chart-sub">Price vs. Model Score</div>
+          <div class="chart-sub">Bubble size = number of reviews</div>
+        </div>
+        <div class="gem-note"><img class="gem-star-icon" src="${GEM_STAR_ICON.src}" alt=""><span><b>Hidden Gem</b> — ${hiddenGem.restaurant_name}, high score with fewer reviews yet</span></div>
+        <div class="chart-canvas-wrap compact"><canvas id="scatterChart"></canvas></div>
+      </div>`;
+    const barChartCard = `
+      <div class="chart-card">
+        <div class="chart-card-head"><div class="chart-title">Model Score Ranking</div><div class="chart-sub">All analyzed spots, highest to lowest</div></div>
+        <div class="chart-canvas-wrap"><canvas id="barChart"></canvas></div>
+      </div>`;
+    const cuisineChartCard = `
+      <div class="chart-card">
+        <div class="chart-card-head"><div class="chart-title">Cuisine Mix</div><div class="chart-sub">What's represented in this search</div></div>
+        <div class="chart-canvas-wrap"><canvas id="cuisineChart"></canvas></div>
+      </div>`;
+
+    // With no cuisine filter, 3 charts side by side got cluttered -- pair
+    // Hidden Gem + Cuisine Mix in one row and give the bar chart its own
+    // full-width row below instead.
+    const chartsHtml = showCuisineChart
+      ? `<div class="insights-grid-2">${hiddenGemCard}${cuisineChartCard}</div>
+         <div style="margin-top:22px;">${barChartCard}</div>`
+      : `<div class="insights-grid-2">${hiddenGemCard}${barChartCard}</div>`;
+
     $("#insightsSection").innerHTML = `
       <div class="section-heading"><span class="spark">✦</span><h2>Market Insights</h2></div>
-      <div class="${showCuisineChart ? 'insights-grid-3' : 'insights-grid-2'}">
-        <div class="chart-card">
-          <div class="chart-card-head">
-            <div class="chart-title">Hidden Gem Finder</div>
-            <div class="chart-sub">Price vs. Model Score</div>
-            <div class="chart-sub">Bubble size = number of reviews</div>
-          </div>
-          <div class="gem-note"><span class="gem-star">★</span><span><b>Hidden Gem</b> — ${hiddenGem.restaurant_name}, high score with fewer reviews yet</span></div>
-          <div class="chart-canvas-wrap compact"><canvas id="scatterChart"></canvas></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-card-head"><div class="chart-title">Model Score Ranking</div><div class="chart-sub">All analyzed spots, highest to lowest</div></div>
-          <div class="chart-canvas-wrap"><canvas id="barChart"></canvas></div>
-        </div>
-        ${showCuisineChart ? `
-        <div class="chart-card">
-          <div class="chart-card-head"><div class="chart-title">Cuisine Mix</div><div class="chart-sub">What's represented in this search</div></div>
-          <div class="chart-canvas-wrap"><canvas id="cuisineChart"></canvas></div>
-        </div>` : ''}
-      </div>
+      ${chartsHtml}
       <div class="chart-card" style="margin-top:22px;">
         <div class="chart-card-head"><div class="chart-title">Full Scorecard</div><div class="chart-sub">Every metric behind the ranking, for every spot analyzed</div></div>
         <div class="table-scroll"><table class="data-table" id="dataTable"></table></div>
@@ -678,7 +722,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
   function renderMethodology(){
     $("#methodologySection").innerHTML = `
       <hr class="dashboard-divider">
-      <div class="section-heading no-line"><span class="spark">✦</span><h2>How the Score Is Calculated</h2></div>
+      <div class="section-heading no-line"><span class="spark">✦</span><h2>How Is the Model Score Calculated?</h2></div>
       <div class="methodology">
         <div class="methodology-grid">
           <div class="methodology-col">
@@ -708,14 +752,14 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
   }
 
   function renderLoading(){
-    $("#statsSection").innerHTML = `<div class="state-msg" id="loadingMsg"><div class="spinner"></div><div id="loadingText">Reading guest reviews…</div></div>`;
+    $("#statsSection").innerHTML = `<div class="state-msg" id="loadingMsg"><div class="spinner"></div><div id="loadingText">We're analyzing live Google reviews — this can take a moment.</div></div>`;
     $("#liveScorecardSection").innerHTML = '';
     clearSections();
   }
 
   function updateLoadingProgress(count, total){
     const el = document.getElementById('loadingText');
-    if(el) el.textContent = total ? `Analyzing ${count} of ${total} restaurants…` : 'Reading guest reviews…';
+    if(el) el.textContent = total ? `Analyzing ${count} of ${total} restaurants…` : "We're analyzing live Google reviews — this can take a moment.";
   }
 
   function clearSections(){
@@ -760,6 +804,9 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     const params = new URLSearchParams({ area });
     if(cuisine) params.set("cuisine", cuisine);
     if(budget) params.set("budget", budget);
+
+    const editLink = document.getElementById("editLink");
+    if(editLink) editLink.addEventListener("click", () => { window.location.href = `/?${params.toString()}`; });
 
     const accumulated = [];
     let total = 0;
