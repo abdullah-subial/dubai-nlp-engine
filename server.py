@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import re
 import threading
 import nltk
 from collections import Counter
@@ -152,6 +153,13 @@ def _fetch_places_pages(query_string, max_pages=1, page_delay_seconds=2.0, min_r
     return all_places
 
 
+def _clean_cuisine_label(raw):
+    if not raw:
+        return "General Dining"
+    cleaned = re.sub(r"\s*restaurants?\s*$", "", raw, flags=re.IGNORECASE).strip()
+    return cleaned or raw
+
+
 def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=20):
     if not area or not area.strip():
         raise ValueError("area is required (e.g. 'Dubai Marina').")
@@ -256,7 +264,7 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=2
 
     for c in candidates:
         place = c["place"]
-        cuisine_type = place.get("primaryTypeDisplayName", {}).get("text", "General Dining")
+        cuisine_type = _clean_cuisine_label(place.get("primaryTypeDisplayName", {}).get("text", "General Dining"))
         location = place.get("location", {})
         lat = location.get("latitude")
         lng = location.get("longitude")
@@ -282,6 +290,7 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=2
                     "price_numeric_max": c["max_price"],
                     "price_source": c["price_source"],
                     "review_rating": review.get("rating"),
+                    "google_rating": place.get("rating"),
                     "review_text": text,
                     "publish_time": publish_time,
                     "user_rating_count": user_rating_count,
@@ -328,9 +337,13 @@ def compute_advanced_metrics(df_reviews, df_aspects=None):
     venues = top5_reviews.groupby("place_id", as_index=False).first()
     venues = venues.rename(columns={"user_rating_count": "total_google_ratings"})
 
-    venues["avg_google_rating"] = venues["place_id"].map(
+    _sampled_avg_rating = venues["place_id"].map(
         top5_reviews.groupby("place_id")["review_rating"].mean()
-    ).round(1)
+    )
+    if "google_rating" in venues.columns:
+        venues["avg_google_rating"] = venues["google_rating"].fillna(_sampled_avg_rating).round(1)
+    else:
+        venues["avg_google_rating"] = _sampled_avg_rating.round(1)
 
     if "sentiment_label" in top5_reviews.columns:
         venues["positive_sentiment_pct"] = venues["place_id"].map(
@@ -535,7 +548,8 @@ def _build_scorecard_row(place_id, group, model_score):
     total_reviews = len(group)
     pos_reviews = (group["sentiment_label"] == "POSITIVE").sum()
     pos_ratio = round((pos_reviews / total_reviews) * 100, 1)
-    avg_rating = round(group["review_rating"].mean(), 1)
+    google_rating = group["google_rating"].iloc[0] if "google_rating" in group.columns else None
+    avg_rating = round(google_rating, 1) if pd.notna(google_rating) else round(group["review_rating"].mean(), 1)
 
     restaurant_name = group["restaurant_name"].iloc[0]
     price_range = group["price_range"].iloc[0]
