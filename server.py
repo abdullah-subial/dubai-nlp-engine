@@ -1,5 +1,7 @@
 import os
 import time
+import json
+import threading
 import nltk
 from collections import Counter
 
@@ -9,9 +11,9 @@ import requests
 import torch
 import spacy
 from spacy.cli import download
-from transformers import pipeline
+from transformers import pipeline, AutoModelForSequenceClassification, AutoTokenizer
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 
 def _get_hf_token():
@@ -73,17 +75,34 @@ sentiment_analyzer = pipeline(
     model="distilbert-base-uncased-finetuned-sst-2-english",
     device=_device,
     token=HF_TOKEN,
+    batch_size=16,
 )
 
 # Zero-shot aspect classifier (food/service/price/ambiance), replacing fixed
 # keyword lists so paraphrases are still picked up. Loaded once at startup.
+# Uses a small distilbert-based MNLI model (much faster than the original
+# distilbart-mnli-12-3 on CPU) and, when running on CPU, dynamic int8
+# quantization on top of that for a further 2-4x speedup with only a
+# small, usually negligible accuracy cost -- this was the single biggest
+# latency contributor in the pipeline (~2:40/search before this change).
 ASPECT_LABELS = ["food quality", "service quality", "price or value", "ambiance"]
 ASPECT_CONFIDENCE_THRESHOLD = 0.5
+ASPECT_MODEL_NAME = "typeform/distilbert-base-uncased-mnli"
+
+_aspect_tokenizer = AutoTokenizer.from_pretrained(ASPECT_MODEL_NAME, token=HF_TOKEN)
+_aspect_model = AutoModelForSequenceClassification.from_pretrained(ASPECT_MODEL_NAME, token=HF_TOKEN)
+
+if _device == -1:
+    _aspect_model = torch.quantization.quantize_dynamic(
+        _aspect_model, {torch.nn.Linear}, dtype=torch.qint8
+    )
+
 aspect_classifier = pipeline(
     "zero-shot-classification",
-    model="valhalla/distilbart-mnli-12-3",
+    model=_aspect_model,
+    tokenizer=_aspect_tokenizer,
     device=_device,
-    token=HF_TOKEN,
+    batch_size=16,
 )
 
 
@@ -91,7 +110,7 @@ aspect_classifier = pipeline(
 # CORE PIPELINE (fetch -> sentiment -> scoring -> insights)
 # Kept in lockstep with the notebook cells this logic was validated in.
 # ==========================================
-def _fetch_places_pages(query_string, max_pages=1, page_delay_seconds=2.0):
+def _fetch_places_pages(query_string, max_pages=1, page_delay_seconds=2.0, min_rating=3.5):
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": API_KEY,
@@ -101,6 +120,14 @@ def _fetch_places_pages(query_string, max_pages=1, page_delay_seconds=2.0):
     page_token = None
     for _ in range(max_pages):
         payload = {"textQuery": query_string, "languageCode": "en", "regionCode": "AE"}
+        # Experimental: asks Google itself to exclude low-rated places from
+        # what it returns (a filter, not a sort -- rankPreference still only
+        # supports RELEVANCE/DISTANCE). Untested against the live API from
+        # here; if Google rejects the field name, this call will raise
+        # RuntimeError below with the API's own error message, making it
+        # obvious to remove/adjust.
+        if min_rating is not None:
+            payload["minRating"] = min_rating
         if page_token:
             payload["pageToken"] = page_token
         try:
@@ -117,7 +144,7 @@ def _fetch_places_pages(query_string, max_pages=1, page_delay_seconds=2.0):
     return all_places
 
 
-def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=1):
+def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=20):
     if not area or not area.strip():
         raise ValueError("area is required (e.g. 'Dubai Marina').")
 
@@ -149,38 +176,34 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=1):
         min_p, q1, q2, q3 = 25.0, 60.0, 150.0, 350.0
 
     quartile_map = {
-        "PRICE_LEVEL_INEXPENSIVE": {"min": min_p, "label": f"AED {int(min_p)} - {int(q1)}"},
-        "PRICE_LEVEL_MODERATE": {"min": q1, "label": f"AED {int(q1)} - {int(q2)}"},
-        "PRICE_LEVEL_EXPENSIVE": {"min": q2, "label": f"AED {int(q2)} - {int(q3)}"},
-        "PRICE_LEVEL_VERY_EXPENSIVE": {"min": q3, "label": f"AED {int(q3)}+"},
+        "PRICE_LEVEL_INEXPENSIVE": {"min": min_p, "max": q1, "label": f"AED {int(min_p)} - {int(q1)}"},
+        "PRICE_LEVEL_MODERATE": {"min": q1, "max": q2, "label": f"AED {int(q1)} - {int(q2)}"},
+        "PRICE_LEVEL_EXPENSIVE": {"min": q2, "max": q3, "label": f"AED {int(q2)} - {int(q3)}"},
+        # Open-ended top bracket -- Google reports no upper number here, so
+        # 1.5x the 75th percentile is a rough stand-in for plotting purposes.
+        "PRICE_LEVEL_VERY_EXPENSIVE": {"min": q3, "max": q3 * 1.5, "label": f"AED {int(q3)}+"},
     }
-    UNKNOWN_PRICE = {"min": q2, "label": "N/A"}
+    UNKNOWN_PRICE = {"min": q2, "max": q2, "label": "N/A"}
 
-    parsed_reviews = []
-    exact_price_count = 0
-    estimated_price_count = 0
-    analyzed_restaurants = set()
-
+    # Pass 1: compute each place's price info and apply the budget filter
+    # across the FULL fetched candidate pool (not just whichever page they
+    # landed on), so narrowing to the highest-rated spots next isn't skewed
+    # by restaurants that wouldn't have fit the budget anyway.
+    candidates = []
     for place in places:
         place_id = place.get("id")
         restaurant_name = place.get("displayName", {}).get("text")
-        cuisine_type = place.get("primaryTypeDisplayName", {}).get("text", "General Dining")
         if not place_id or not restaurant_name:
             continue
 
-        location = place.get("location", {})
-        lat = location.get("latitude")
-        lng = location.get("longitude")
-        user_rating_count = place.get("userRatingCount", 0)
-        address = place.get("formattedAddress") or place.get("shortFormattedAddress", "Dubai, UAE")
         p_range = place.get("priceRange")
-
         if (p_range
             and p_range.get("startPrice", {}).get("units")
             and p_range.get("startPrice", {}).get("currencyCode") == "AED"):
             start = float(p_range["startPrice"]["units"])
             end = p_range.get("endPrice", {}).get("units", "")
             min_price = start
+            max_price = float(end) if end else start * 1.5
             price_display = f"AED {int(start)} - {int(end)}" if end else f"AED {int(start)}+"
             price_source = "Verified Google Price"
             is_exact = True
@@ -188,6 +211,7 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=1):
             raw_level = place.get("priceLevel")
             meta = quartile_map.get(raw_level, UNKNOWN_PRICE)
             min_price = meta["min"]
+            max_price = meta["max"]
             price_display = meta["label"]
             price_source = "Area Quartile Estimate" if raw_level in quartile_map else "Unknown (Area Median Used)"
             is_exact = False
@@ -195,8 +219,44 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=1):
         if max_budget is not None and min_price > max_budget:
             continue
 
-        analyzed_restaurants.add(place_id)
-        if is_exact:
+        candidates.append({
+            "place": place,
+            "place_id": place_id,
+            "restaurant_name": restaurant_name,
+            "min_price": min_price,
+            "max_price": max_price,
+            "price_display": price_display,
+            "price_source": price_source,
+            "is_exact": is_exact,
+        })
+
+    # Keep only the highest-rated candidates. Google's Text Search only
+    # supports rankPreference RELEVANCE or DISTANCE -- there is no native
+    # "sort by rating" -- so without this step we'd analyze whichever
+    # restaurants happened to rank first for the search text, not
+    # necessarily the best ones in the area.
+    candidates.sort(
+        key=lambda c: (c["place"].get("rating", 0) or 0, c["place"].get("userRatingCount", 0) or 0),
+        reverse=True,
+    )
+    candidates = candidates[:top_n]
+
+    parsed_reviews = []
+    exact_price_count = 0
+    estimated_price_count = 0
+    analyzed_restaurants = set()
+
+    for c in candidates:
+        place = c["place"]
+        cuisine_type = place.get("primaryTypeDisplayName", {}).get("text", "General Dining")
+        location = place.get("location", {})
+        lat = location.get("latitude")
+        lng = location.get("longitude")
+        user_rating_count = place.get("userRatingCount", 0)
+        address = place.get("formattedAddress") or place.get("shortFormattedAddress", "Dubai, UAE")
+
+        analyzed_restaurants.add(c["place_id"])
+        if c["is_exact"]:
             exact_price_count += 1
         else:
             estimated_price_count += 1
@@ -206,12 +266,13 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=1):
             publish_time = review.get("publishTime", "")
             if text:
                 parsed_reviews.append({
-                    "place_id": place_id,
-                    "restaurant_name": restaurant_name,
+                    "place_id": c["place_id"],
+                    "restaurant_name": c["restaurant_name"],
                     "cuisine": cuisine_type,
-                    "price_range": price_display,
-                    "price_numeric": min_price,
-                    "price_source": price_source,
+                    "price_range": c["price_display"],
+                    "price_numeric": c["min_price"],
+                    "price_numeric_max": c["max_price"],
+                    "price_source": c["price_source"],
                     "review_rating": review.get("rating"),
                     "review_text": text,
                     "publish_time": publish_time,
@@ -459,6 +520,64 @@ def classify_review_aspects(df_reviews):
     return pd.DataFrame(rows)
 
 
+def _build_scorecard_row(place_id, group, model_score):
+    """One restaurant's full scorecard record. `group` is that restaurant's
+    review-level rows (from analyze_sentiment output); `model_score` is
+    computed separately since it comes from compute_advanced_metrics."""
+    total_reviews = len(group)
+    pos_reviews = (group["sentiment_label"] == "POSITIVE").sum()
+    pos_ratio = round((pos_reviews / total_reviews) * 100, 1)
+    avg_rating = round(group["review_rating"].mean(), 1)
+
+    restaurant_name = group["restaurant_name"].iloc[0]
+    price_range = group["price_range"].iloc[0]
+    cuisine = group["cuisine"].iloc[0]
+    lat = group["latitude"].iloc[0] if "latitude" in group.columns else None
+    lng = group["longitude"].iloc[0] if "longitude" in group.columns else None
+    user_rating_count = group["user_rating_count"].iloc[0] if "user_rating_count" in group.columns else 0
+    price_numeric = group["price_numeric"].iloc[0] if "price_numeric" in group.columns else None
+    price_numeric_max = group["price_numeric_max"].iloc[0] if "price_numeric_max" in group.columns else price_numeric
+    address = group["formatted_address"].iloc[0] if "formatted_address" in group.columns else None
+
+    pos_texts = group[group["sentiment_label"] == "POSITIVE"]["review_text"].tolist()
+    famous_dish, vibe_check, vibe_word_frequencies = extract_dish_and_vibe(pos_texts if pos_texts else group["review_text"].tolist())
+
+    if "publish_time" in group.columns and group["publish_time"].notna().any():
+        recent_group = group.sort_values(by="publish_time", ascending=False)
+    else:
+        recent_group = group
+
+    recent_3_reviews = recent_group[
+        ["review_text", "publish_time", "review_rating", "sentiment_label"]
+    ].head(3).to_dict(orient="records")
+
+    pos_snippet = group[group["sentiment_label"] == "POSITIVE"]["review_text"].head(1).values
+    neg_snippet = group[group["sentiment_label"] == "NEGATIVE"]["review_text"].head(1).values
+
+    return {
+        "place_id": place_id,
+        "restaurant_name": restaurant_name,
+        "model_score": model_score,
+        "cuisine": cuisine,
+        "price_range": price_range,
+        "price_numeric": price_numeric,
+        "price_numeric_max": price_numeric_max,
+        "address": address,
+        "avg_google_rating": avg_rating,
+        "total_google_ratings": user_rating_count,
+        "positive_sentiment_pct": pos_ratio,
+        "reviews_analyzed": total_reviews,
+        "famous_dish": famous_dish,
+        "vibe_check": vibe_check,
+        "vibe_word_frequencies": vibe_word_frequencies,
+        "latitude": lat,
+        "longitude": lng,
+        "recent_3_reviews": recent_3_reviews,
+        "sample_positive_review": pos_snippet[0] if len(pos_snippet) > 0 else "N/A",
+        "sample_negative_review": neg_snippet[0] if len(neg_snippet) > 0 else "N/A",
+    }
+
+
 def generate_restaurant_insights(df_analyzed):
     if df_analyzed.empty:
         return pd.DataFrame(), {}
@@ -466,59 +585,10 @@ def generate_restaurant_insights(df_analyzed):
     if "publish_time" in df_analyzed.columns:
         df_analyzed["publish_time"] = pd.to_datetime(df_analyzed["publish_time"], errors="coerce")
 
-    agg_list = []
-    for place_id, group in df_analyzed.groupby("place_id"):
-        total_reviews = len(group)
-        pos_reviews = (group["sentiment_label"] == "POSITIVE").sum()
-        pos_ratio = round((pos_reviews / total_reviews) * 100, 1)
-        avg_rating = round(group["review_rating"].mean(), 1)
-
-        restaurant_name = group["restaurant_name"].iloc[0]
-        price_range = group["price_range"].iloc[0]
-        cuisine = group["cuisine"].iloc[0]
-        lat = group["latitude"].iloc[0] if "latitude" in group.columns else None
-        lng = group["longitude"].iloc[0] if "longitude" in group.columns else None
-        user_rating_count = group["user_rating_count"].iloc[0] if "user_rating_count" in group.columns else 0
-        price_numeric = group["price_numeric"].iloc[0] if "price_numeric" in group.columns else None
-        address = group["formatted_address"].iloc[0] if "formatted_address" in group.columns else None
-        model_score = group["model_score"].iloc[0] if "model_score" in group.columns else 0.0
-
-        pos_texts = group[group["sentiment_label"] == "POSITIVE"]["review_text"].tolist()
-        famous_dish, vibe_check, vibe_word_frequencies = extract_dish_and_vibe(pos_texts if pos_texts else group["review_text"].tolist())
-
-        if "publish_time" in group.columns and group["publish_time"].notna().any():
-            recent_group = group.sort_values(by="publish_time", ascending=False)
-        else:
-            recent_group = group
-
-        recent_3_reviews = recent_group[
-            ["review_text", "publish_time", "review_rating", "sentiment_label"]
-        ].head(3).to_dict(orient="records")
-
-        pos_snippet = group[group["sentiment_label"] == "POSITIVE"]["review_text"].head(1).values
-        neg_snippet = group[group["sentiment_label"] == "NEGATIVE"]["review_text"].head(1).values
-
-        agg_list.append({
-            "place_id": place_id,
-            "restaurant_name": restaurant_name,
-            "model_score": model_score,
-            "cuisine": cuisine,
-            "price_range": price_range,
-            "price_numeric": price_numeric,
-            "address": address,
-            "avg_google_rating": avg_rating,
-            "total_google_ratings": user_rating_count,
-            "positive_sentiment_pct": pos_ratio,
-            "reviews_analyzed": total_reviews,
-            "famous_dish": famous_dish,
-            "vibe_check": vibe_check,
-            "vibe_word_frequencies": vibe_word_frequencies,
-            "latitude": lat,
-            "longitude": lng,
-            "recent_3_reviews": recent_3_reviews,
-            "sample_positive_review": pos_snippet[0] if len(pos_snippet) > 0 else "N/A",
-            "sample_negative_review": neg_snippet[0] if len(neg_snippet) > 0 else "N/A",
-        })
+    agg_list = [
+        _build_scorecard_row(place_id, group, group["model_score"].iloc[0] if "model_score" in group.columns else 0.0)
+        for place_id, group in df_analyzed.groupby("place_id")
+    ]
 
     df_scorecard = pd.DataFrame(agg_list)
     df_scorecard = df_scorecard.sort_values(
@@ -566,6 +636,14 @@ class TTLCache:
 
 
 recommendation_cache = TTLCache(ttl_seconds=6 * 3600)
+
+POPULAR_AREAS = [
+    "Dubai Marina", "Downtown Dubai", "Jumeirah Beach Residence (JBR)", "Business Bay",
+    "Palm Jumeirah", "Deira", "Bur Dubai", "Al Barsha", "Jumeirah Lake Towers (JLT)",
+    "Dubai Hills Estate", "DIFC", "Al Quoz", "City Walk", "La Mer", "Umm Suqeim",
+    "Al Karama", "Satwa", "Mirdif", "Arabian Ranches", "Dubai Silicon Oasis",
+    "International City", "Discovery Gardens",
+]
 
 
 def _aggregate_stats(df_scorecard):
@@ -621,6 +699,86 @@ def get_recommendations(area, cuisine="", max_budget=None, use_cache=True):
     return result
 
 
+def stream_recommendation_events(area, cuisine="", max_budget=None, use_cache=True):
+    cache_key = (area.strip().lower(), (cuisine or "").strip().lower(), max_budget)
+
+    if use_cache:
+        cached = recommendation_cache.get(cache_key)
+        if cached is not None:
+            for row in cached.get("restaurants", []):
+                yield {"type": "restaurant", "restaurant": row}
+            yield {
+                "type": "done",
+                "summary": cached.get("summary"),
+                "top_pick": cached.get("top_pick"),
+                "stats": cached.get("stats"),
+            }
+            return
+
+    df_reviews, df_summary = get_reviews_for_area(area=area, cuisine=cuisine, max_budget=max_budget)
+
+    if df_reviews.empty:
+        result = {
+            "summary": df_summary.loc[0, "transparency_note"],
+            "top_pick": None,
+            "restaurants": [],
+            "stats": {
+                "restaurants_analyzed": 0, "reviews_analyzed": 0,
+                "avg_google_rating": None, "avg_sentiment_pct": None, "avg_spend_per_person": None,
+            },
+        }
+        if use_cache:
+            recommendation_cache.set(cache_key, result)
+        yield {"type": "done", **result}
+        return
+
+    df_analyzed = analyze_sentiment(df_reviews)
+    if "publish_time" in df_analyzed.columns:
+        df_analyzed["publish_time"] = pd.to_datetime(df_analyzed["publish_time"], errors="coerce")
+
+    place_groups = list(df_analyzed.groupby("place_id"))
+    yield {"type": "start", "total": len(place_groups)}
+
+    scorecard_rows = []
+    for place_id, group in place_groups:
+        df_aspects_group = classify_review_aspects(group)
+        scored = compute_advanced_metrics(group, df_aspects_group)
+        model_score = float(scored["model_score"].iloc[0]) if not scored.empty else 0.0
+        row = _jsonable(_build_scorecard_row(place_id, group, model_score))
+        scorecard_rows.append(row)
+        yield {"type": "restaurant", "restaurant": row}
+
+    scorecard_rows.sort(key=lambda r: (r["model_score"], r["positive_sentiment_pct"]), reverse=True)
+    df_scorecard = pd.DataFrame(scorecard_rows)
+    top_venue = scorecard_rows[0] if scorecard_rows else None
+
+    result = {
+        "summary": df_summary.loc[0, "transparency_note"],
+        "top_pick": top_venue,
+        "restaurants": scorecard_rows,
+        "stats": _aggregate_stats(df_scorecard),
+    }
+    if use_cache:
+        recommendation_cache.set(cache_key, result)
+
+    yield {"type": "done", "summary": result["summary"], "top_pick": result["top_pick"], "stats": result["stats"]}
+
+
+def _prewarm_cache_loop():
+    refresh_interval = max(60, recommendation_cache.ttl_seconds - 300)
+    while True:
+        for area in POPULAR_AREAS:
+            try:
+                get_recommendations(area=area, cuisine="", max_budget=None, use_cache=True)
+            except Exception as exc:
+                print(f"[prewarm] failed for {area!r}: {exc}")
+            time.sleep(5)  # small gap between areas so we don't hammer Google/HF back-to-back
+        time.sleep(refresh_interval)
+
+
+threading.Thread(target=_prewarm_cache_loop, daemon=True).start()
+
+
 # ==========================================
 # FASTAPI APP
 # ==========================================
@@ -646,6 +804,22 @@ def recommend(
         raise HTTPException(status_code=400, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.get("/api/recommend/stream")
+def recommend_stream(
+    area: str = Query(..., min_length=1, description="Required. e.g. 'Dubai Marina'"),
+    cuisine: str = Query("", description="Optional cuisine filter, e.g. 'Italian'"),
+    budget: float = Query(None, description="Optional max budget in AED"),
+):
+    def event_generator():
+        try:
+            for event in stream_recommendation_events(area=area, cuisine=cuisine, max_budget=budget):
+                yield json.dumps(event) + "\n"
+        except (ValueError, RuntimeError) as exc:
+            yield json.dumps({"type": "error", "message": str(exc)}) + "\n"
+
+    return StreamingResponse(event_generator(), media_type="application/x-ndjson")
 
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend")
