@@ -110,7 +110,7 @@ aspect_classifier = pipeline(
 # CORE PIPELINE (fetch -> sentiment -> scoring -> insights)
 # Kept in lockstep with the notebook cells this logic was validated in.
 # ==========================================
-def _fetch_places_pages(query_string, max_pages=1, page_delay_seconds=2.0):
+def _fetch_places_pages(query_string, max_pages=1, page_delay_seconds=2.0, min_rating=3.5):
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": API_KEY,
@@ -120,6 +120,14 @@ def _fetch_places_pages(query_string, max_pages=1, page_delay_seconds=2.0):
     page_token = None
     for _ in range(max_pages):
         payload = {"textQuery": query_string, "languageCode": "en", "regionCode": "AE"}
+        # Experimental: asks Google itself to exclude low-rated places from
+        # what it returns (a filter, not a sort -- rankPreference still only
+        # supports RELEVANCE/DISTANCE). Untested against the live API from
+        # here; if Google rejects the field name, this call will raise
+        # RuntimeError below with the API's own error message, making it
+        # obvious to remove/adjust.
+        if min_rating is not None:
+            payload["minRating"] = min_rating
         if page_token:
             payload["pageToken"] = page_token
         try:
