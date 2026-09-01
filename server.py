@@ -75,6 +75,7 @@ sentiment_analyzer = pipeline(
     model="distilbert-base-uncased-finetuned-sst-2-english",
     device=_device,
     token=HF_TOKEN,
+    batch_size=16,
 )
 
 # Zero-shot aspect classifier (food/service/price/ambiance), replacing fixed
@@ -101,6 +102,7 @@ aspect_classifier = pipeline(
     model=_aspect_model,
     tokenizer=_aspect_tokenizer,
     device=_device,
+    batch_size=16,
 )
 
 
