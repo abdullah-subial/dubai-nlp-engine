@@ -160,12 +160,28 @@ def _clean_cuisine_label(raw):
     return cleaned or raw
 
 
+# Tried strictest first -- a dense, popular area may have 20+ places at 4.8,
+# but most area/cuisine combos won't, so this usually cascades down. Each
+# step is just one extra Places API call (network-bound, a second or so),
+# not another pass through the NLP pipeline, so trying several is cheap.
+RATING_CASCADE = [4.8, 4.5, 4.0, 3.5, None]
+
+
+def _fetch_best_rated_places(query_string, max_pages, top_n):
+    places = []
+    for threshold in RATING_CASCADE:
+        places = _fetch_places_pages(query_string, max_pages=max_pages, min_rating=threshold)
+        if len(places) >= top_n:
+            break
+    return places
+
+
 def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=20):
     if not area or not area.strip():
         raise ValueError("area is required (e.g. 'Dubai Marina').")
 
     query_string = f"{cuisine} restaurants in {area}, Dubai".strip()
-    places = _fetch_places_pages(query_string, max_pages=max_pages)
+    places = _fetch_best_rated_places(query_string, max_pages=max_pages, top_n=top_n)
 
     if not places:
         empty_summary = pd.DataFrame([{
