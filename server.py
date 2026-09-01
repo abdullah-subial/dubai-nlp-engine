@@ -1,5 +1,6 @@
 import os
 import time
+import json
 import threading
 import nltk
 from collections import Counter
@@ -12,7 +13,7 @@ import spacy
 from spacy.cli import download
 from transformers import pipeline, AutoModelForSequenceClassification, AutoTokenizer
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 
 def _get_hf_token():
@@ -480,6 +481,64 @@ def classify_review_aspects(df_reviews):
     return pd.DataFrame(rows)
 
 
+def _build_scorecard_row(place_id, group, model_score):
+    """One restaurant's full scorecard record. `group` is that restaurant's
+    review-level rows (from analyze_sentiment output); `model_score` is
+    computed separately since it comes from compute_advanced_metrics."""
+    total_reviews = len(group)
+    pos_reviews = (group["sentiment_label"] == "POSITIVE").sum()
+    pos_ratio = round((pos_reviews / total_reviews) * 100, 1)
+    avg_rating = round(group["review_rating"].mean(), 1)
+
+    restaurant_name = group["restaurant_name"].iloc[0]
+    price_range = group["price_range"].iloc[0]
+    cuisine = group["cuisine"].iloc[0]
+    lat = group["latitude"].iloc[0] if "latitude" in group.columns else None
+    lng = group["longitude"].iloc[0] if "longitude" in group.columns else None
+    user_rating_count = group["user_rating_count"].iloc[0] if "user_rating_count" in group.columns else 0
+    price_numeric = group["price_numeric"].iloc[0] if "price_numeric" in group.columns else None
+    price_numeric_max = group["price_numeric_max"].iloc[0] if "price_numeric_max" in group.columns else price_numeric
+    address = group["formatted_address"].iloc[0] if "formatted_address" in group.columns else None
+
+    pos_texts = group[group["sentiment_label"] == "POSITIVE"]["review_text"].tolist()
+    famous_dish, vibe_check, vibe_word_frequencies = extract_dish_and_vibe(pos_texts if pos_texts else group["review_text"].tolist())
+
+    if "publish_time" in group.columns and group["publish_time"].notna().any():
+        recent_group = group.sort_values(by="publish_time", ascending=False)
+    else:
+        recent_group = group
+
+    recent_3_reviews = recent_group[
+        ["review_text", "publish_time", "review_rating", "sentiment_label"]
+    ].head(3).to_dict(orient="records")
+
+    pos_snippet = group[group["sentiment_label"] == "POSITIVE"]["review_text"].head(1).values
+    neg_snippet = group[group["sentiment_label"] == "NEGATIVE"]["review_text"].head(1).values
+
+    return {
+        "place_id": place_id,
+        "restaurant_name": restaurant_name,
+        "model_score": model_score,
+        "cuisine": cuisine,
+        "price_range": price_range,
+        "price_numeric": price_numeric,
+        "price_numeric_max": price_numeric_max,
+        "address": address,
+        "avg_google_rating": avg_rating,
+        "total_google_ratings": user_rating_count,
+        "positive_sentiment_pct": pos_ratio,
+        "reviews_analyzed": total_reviews,
+        "famous_dish": famous_dish,
+        "vibe_check": vibe_check,
+        "vibe_word_frequencies": vibe_word_frequencies,
+        "latitude": lat,
+        "longitude": lng,
+        "recent_3_reviews": recent_3_reviews,
+        "sample_positive_review": pos_snippet[0] if len(pos_snippet) > 0 else "N/A",
+        "sample_negative_review": neg_snippet[0] if len(neg_snippet) > 0 else "N/A",
+    }
+
+
 def generate_restaurant_insights(df_analyzed):
     if df_analyzed.empty:
         return pd.DataFrame(), {}
@@ -487,61 +546,10 @@ def generate_restaurant_insights(df_analyzed):
     if "publish_time" in df_analyzed.columns:
         df_analyzed["publish_time"] = pd.to_datetime(df_analyzed["publish_time"], errors="coerce")
 
-    agg_list = []
-    for place_id, group in df_analyzed.groupby("place_id"):
-        total_reviews = len(group)
-        pos_reviews = (group["sentiment_label"] == "POSITIVE").sum()
-        pos_ratio = round((pos_reviews / total_reviews) * 100, 1)
-        avg_rating = round(group["review_rating"].mean(), 1)
-
-        restaurant_name = group["restaurant_name"].iloc[0]
-        price_range = group["price_range"].iloc[0]
-        cuisine = group["cuisine"].iloc[0]
-        lat = group["latitude"].iloc[0] if "latitude" in group.columns else None
-        lng = group["longitude"].iloc[0] if "longitude" in group.columns else None
-        user_rating_count = group["user_rating_count"].iloc[0] if "user_rating_count" in group.columns else 0
-        price_numeric = group["price_numeric"].iloc[0] if "price_numeric" in group.columns else None
-        price_numeric_max = group["price_numeric_max"].iloc[0] if "price_numeric_max" in group.columns else price_numeric
-        address = group["formatted_address"].iloc[0] if "formatted_address" in group.columns else None
-        model_score = group["model_score"].iloc[0] if "model_score" in group.columns else 0.0
-
-        pos_texts = group[group["sentiment_label"] == "POSITIVE"]["review_text"].tolist()
-        famous_dish, vibe_check, vibe_word_frequencies = extract_dish_and_vibe(pos_texts if pos_texts else group["review_text"].tolist())
-
-        if "publish_time" in group.columns and group["publish_time"].notna().any():
-            recent_group = group.sort_values(by="publish_time", ascending=False)
-        else:
-            recent_group = group
-
-        recent_3_reviews = recent_group[
-            ["review_text", "publish_time", "review_rating", "sentiment_label"]
-        ].head(3).to_dict(orient="records")
-
-        pos_snippet = group[group["sentiment_label"] == "POSITIVE"]["review_text"].head(1).values
-        neg_snippet = group[group["sentiment_label"] == "NEGATIVE"]["review_text"].head(1).values
-
-        agg_list.append({
-            "place_id": place_id,
-            "restaurant_name": restaurant_name,
-            "model_score": model_score,
-            "cuisine": cuisine,
-            "price_range": price_range,
-            "price_numeric": price_numeric,
-            "price_numeric_max": price_numeric_max,
-            "address": address,
-            "avg_google_rating": avg_rating,
-            "total_google_ratings": user_rating_count,
-            "positive_sentiment_pct": pos_ratio,
-            "reviews_analyzed": total_reviews,
-            "famous_dish": famous_dish,
-            "vibe_check": vibe_check,
-            "vibe_word_frequencies": vibe_word_frequencies,
-            "latitude": lat,
-            "longitude": lng,
-            "recent_3_reviews": recent_3_reviews,
-            "sample_positive_review": pos_snippet[0] if len(pos_snippet) > 0 else "N/A",
-            "sample_negative_review": neg_snippet[0] if len(neg_snippet) > 0 else "N/A",
-        })
+    agg_list = [
+        _build_scorecard_row(place_id, group, group["model_score"].iloc[0] if "model_score" in group.columns else 0.0)
+        for place_id, group in df_analyzed.groupby("place_id")
+    ]
 
     df_scorecard = pd.DataFrame(agg_list)
     df_scorecard = df_scorecard.sort_values(
@@ -652,6 +660,71 @@ def get_recommendations(area, cuisine="", max_budget=None, use_cache=True):
     return result
 
 
+def stream_recommendation_events(area, cuisine="", max_budget=None, use_cache=True):
+    cache_key = (area.strip().lower(), (cuisine or "").strip().lower(), max_budget)
+
+    if use_cache:
+        cached = recommendation_cache.get(cache_key)
+        if cached is not None:
+            for row in cached.get("restaurants", []):
+                yield {"type": "restaurant", "restaurant": row}
+            yield {
+                "type": "done",
+                "summary": cached.get("summary"),
+                "top_pick": cached.get("top_pick"),
+                "stats": cached.get("stats"),
+            }
+            return
+
+    df_reviews, df_summary = get_reviews_for_area(area=area, cuisine=cuisine, max_budget=max_budget)
+
+    if df_reviews.empty:
+        result = {
+            "summary": df_summary.loc[0, "transparency_note"],
+            "top_pick": None,
+            "restaurants": [],
+            "stats": {
+                "restaurants_analyzed": 0, "reviews_analyzed": 0,
+                "avg_google_rating": None, "avg_sentiment_pct": None, "avg_spend_per_person": None,
+            },
+        }
+        if use_cache:
+            recommendation_cache.set(cache_key, result)
+        yield {"type": "done", **result}
+        return
+
+    df_analyzed = analyze_sentiment(df_reviews)
+    if "publish_time" in df_analyzed.columns:
+        df_analyzed["publish_time"] = pd.to_datetime(df_analyzed["publish_time"], errors="coerce")
+
+    place_groups = list(df_analyzed.groupby("place_id"))
+    yield {"type": "start", "total": len(place_groups)}
+
+    scorecard_rows = []
+    for place_id, group in place_groups:
+        df_aspects_group = classify_review_aspects(group)
+        scored = compute_advanced_metrics(group, df_aspects_group)
+        model_score = float(scored["model_score"].iloc[0]) if not scored.empty else 0.0
+        row = _jsonable(_build_scorecard_row(place_id, group, model_score))
+        scorecard_rows.append(row)
+        yield {"type": "restaurant", "restaurant": row}
+
+    scorecard_rows.sort(key=lambda r: (r["model_score"], r["positive_sentiment_pct"]), reverse=True)
+    df_scorecard = pd.DataFrame(scorecard_rows)
+    top_venue = scorecard_rows[0] if scorecard_rows else None
+
+    result = {
+        "summary": df_summary.loc[0, "transparency_note"],
+        "top_pick": top_venue,
+        "restaurants": scorecard_rows,
+        "stats": _aggregate_stats(df_scorecard),
+    }
+    if use_cache:
+        recommendation_cache.set(cache_key, result)
+
+    yield {"type": "done", "summary": result["summary"], "top_pick": result["top_pick"], "stats": result["stats"]}
+
+
 def _prewarm_cache_loop():
     refresh_interval = max(60, recommendation_cache.ttl_seconds - 300)
     while True:
@@ -692,6 +765,22 @@ def recommend(
         raise HTTPException(status_code=400, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.get("/api/recommend/stream")
+def recommend_stream(
+    area: str = Query(..., min_length=1, description="Required. e.g. 'Dubai Marina'"),
+    cuisine: str = Query("", description="Optional cuisine filter, e.g. 'Italian'"),
+    budget: float = Query(None, description="Optional max budget in AED"),
+):
+    def event_generator():
+        try:
+            for event in stream_recommendation_events(area=area, cuisine=cuisine, max_budget=budget):
+                yield json.dumps(event) + "\n"
+        except (ValueError, RuntimeError) as exc:
+            yield json.dumps({"type": "error", "message": str(exc)}) + "\n"
+
+    return StreamingResponse(event_generator(), media_type="application/x-ndjson")
 
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend")

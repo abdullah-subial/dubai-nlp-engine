@@ -331,6 +331,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     <p id="transparencyNote">Analyzed <b>0</b> venues.</p>
   </div>
   <div class="section" id="statsSection"></div>
+  <div class="section" id="liveScorecardSection"></div>
   <div class="section" id="topPickSection"></div>
   <div class="section" id="otherSection"></div>
   <div class="section" id="insightsSection"></div>
@@ -606,7 +607,8 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     return [...results].filter(r=>r.model_score>=82).sort((a,b)=>a.total_google_ratings-b.total_google_ratings)[0] || results[0];
   }
 
-  function renderDataTable(results){
+  function renderDataTable(results, targetId){
+    targetId = targetId || 'dataTable';
     const sorted = [...results].sort((a,b)=>b.model_score-a.model_score);
     const rows = sorted.map(r => `
       <tr>
@@ -619,12 +621,24 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
         <td class="num">${r.positive_sentiment_pct}%</td>
         <td>${r.price_range}</td>
       </tr>`).join('');
-    document.getElementById('dataTable').innerHTML = `
+    document.getElementById(targetId).innerHTML = `
       <thead><tr>
         <th>Restaurant</th><th>Address</th><th>Cuisine</th><th>Model Score</th><th>Google Rating</th><th>Ratings</th>
         <th>Google Review Sentiment</th><th>Price Range</th>
       </tr></thead>
       <tbody>${rows}</tbody>`;
+  }
+
+  function renderLiveScorecard(results, total){
+    if(!results.length){ $("#liveScorecardSection").innerHTML = ''; return; }
+    const label = total ? `${results.length} of ${total} restaurants analyzed so far` : `${results.length} restaurant${results.length!==1?'s':''} analyzed so far`;
+    $("#liveScorecardSection").innerHTML = `
+      <div class="section-heading no-line"><span class="spark">✦</span><h2>Analyzing Restaurants…</h2></div>
+      <div class="chart-card">
+        <div class="chart-card-head"><div class="chart-title">Full Scorecard</div><div class="chart-sub">${label} — building your results…</div></div>
+        <div class="table-scroll"><table class="data-table" id="liveDataTable"></table></div>
+      </div>`;
+    renderDataTable(results, 'liveDataTable');
   }
 
   function renderInsights(results, cuisineFilter){
@@ -694,11 +708,14 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
   }
 
   function renderLoading(){
-    $("#statsSection").innerHTML = `<div class="state-msg"><div class="spinner"></div><div>Reading guest reviews…</div></div>`;
-    $("#topPickSection").innerHTML = '';
-    $("#otherSection").innerHTML = '';
-    $("#insightsSection").innerHTML = '';
-    $("#methodologySection").innerHTML = '';
+    $("#statsSection").innerHTML = `<div class="state-msg" id="loadingMsg"><div class="spinner"></div><div id="loadingText">Reading guest reviews…</div></div>`;
+    $("#liveScorecardSection").innerHTML = '';
+    clearSections();
+  }
+
+  function updateLoadingProgress(count, total){
+    const el = document.getElementById('loadingText');
+    if(el) el.textContent = total ? `Analyzing ${count} of ${total} restaurants…` : 'Reading guest reviews…';
   }
 
   function clearSections(){
@@ -706,6 +723,33 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     $("#otherSection").innerHTML = '';
     $("#insightsSection").innerHTML = '';
     $("#methodologySection").innerHTML = '';
+  }
+
+  function finishSearch(area, cuisine, results, finalPayload){
+    $("#liveScorecardSection").innerHTML = '';
+
+    if(!finalPayload || !results.length){
+      $("#statsSection").innerHTML = `<div class="state-msg"><div class="big">No spots found in ${escapeHtml(area)}.</div><div>Try a nearby area, or widen your budget.</div></div>`;
+      $("#transparencyNote").textContent = (finalPayload && finalPayload.summary) || "No matches for this search.";
+      clearSections();
+      return;
+    }
+
+    const sorted = [...results].sort((a,b)=>b.model_score - a.model_score);
+    const top = sorted[0];
+    const rest = sorted.slice(1, 4); // next top 3 only
+
+    renderStats(finalPayload.stats);
+    renderTopPick(top);
+    renderOthers(rest);
+    try {
+      renderInsights(results, cuisine);
+    } catch (err) {
+      console.error("Market Insights failed to render:", err);
+      $("#insightsSection").innerHTML = `<div class="section-heading no-line"><span class="spark">✦</span><h2>Market Insights</h2></div><div class="state-msg">Charts couldn't load (${escapeHtml(err.message)}).</div>`;
+    }
+    renderMethodology();
+    $("#transparencyNote").textContent = finalPayload.summary || `Analyzed ${results.length} venue${results.length!==1?'s':''} in ${area}.`;
   }
 
   function runSearch(area, cuisine, budget){
@@ -717,39 +761,56 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     if(cuisine) params.set("cuisine", cuisine);
     if(budget) params.set("budget", budget);
 
-    fetch(`/api/recommend?${params.toString()}`)
+    const accumulated = [];
+    let total = 0;
+    let finalPayload = null;
+    let buffer = '';
+
+    function handleLine(line){
+      line = line.trim();
+      if(!line) return;
+      let evt;
+      try { evt = JSON.parse(line); } catch(e){ console.error('Bad stream line:', line, e); return; }
+
+      if(evt.type === 'start'){
+        total = evt.total || 0;
+        updateLoadingProgress(0, total);
+      } else if(evt.type === 'restaurant'){
+        accumulated.push(evt.restaurant);
+        updateLoadingProgress(accumulated.length, total);
+        renderLiveScorecard(accumulated, total);
+      } else if(evt.type === 'done'){
+        finalPayload = evt;
+      } else if(evt.type === 'error'){
+        throw new Error(evt.message);
+      }
+    }
+
+    fetch(`/api/recommend/stream?${params.toString()}`)
       .then(res => {
-        if(!res.ok) throw new Error(`Server returned ${res.status}`);
-        return res.json();
-      })
-      .then(data => {
-        const results = data.restaurants || [];
+        if(!res.ok || !res.body) throw new Error(`Server returned ${res.status}`);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
 
-        if(!results.length){
-          $("#statsSection").innerHTML = `<div class="state-msg"><div class="big">No spots found in ${escapeHtml(area)}.</div><div>Try a nearby area, or widen your budget.</div></div>`;
-          $("#transparencyNote").textContent = data.summary || "No matches for this search.";
-          clearSections();
-          return;
+        function pump(){
+          return reader.read().then(({done, value}) => {
+            if(done){
+              if(buffer.trim()) handleLine(buffer);
+              return;
+            }
+            buffer += decoder.decode(value, {stream:true});
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            lines.forEach(handleLine);
+            return pump();
+          });
         }
-
-        const sorted = [...results].sort((a,b)=>b.model_score - a.model_score);
-        const top = sorted[0];
-        const rest = sorted.slice(1, 4); // next top 3 only
-
-        renderStats(data.stats);
-        renderTopPick(top);
-        renderOthers(rest);
-        try {
-          renderInsights(results, cuisine);
-        } catch (err) {
-          console.error("Market Insights failed to render:", err);
-          $("#insightsSection").innerHTML = `<div class="section-heading no-line"><span class="spark">✦</span><h2>Market Insights</h2></div><div class="state-msg">Charts couldn't load (${escapeHtml(err.message)}).</div>`;
-        }
-        renderMethodology();
-        $("#transparencyNote").textContent = data.summary || `Analyzed ${results.length} venue${results.length!==1?'s':''} in ${area}.`;
+        return pump();
       })
+      .then(() => finishSearch(area, cuisine, accumulated, finalPayload))
       .catch(err => {
         console.error("Failed to load recommendations:", err);
+        $("#liveScorecardSection").innerHTML = '';
         $("#statsSection").innerHTML = `<div class="state-msg"><div class="big">Something went wrong.</div><div>Could not reach the server (${escapeHtml(err.message)}). Please try again.</div></div>`;
         $("#transparencyNote").textContent = "Search failed.";
         clearSections();
