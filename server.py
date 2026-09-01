@@ -93,9 +93,17 @@ _aspect_tokenizer = AutoTokenizer.from_pretrained(ASPECT_MODEL_NAME, token=HF_TO
 _aspect_model = AutoModelForSequenceClassification.from_pretrained(ASPECT_MODEL_NAME, token=HF_TOKEN)
 
 if _device == -1:
-    _aspect_model = torch.quantization.quantize_dynamic(
-        _aspect_model, {torch.nn.Linear}, dtype=torch.qint8
-    )
+    # Not every platform ships a working PyTorch quantization engine (notably
+    # Apple Silicon Macs often lack both fbgemm and qnnpack in the standard
+    # CPU build) -- quantization is a bonus speedup, not a requirement, so
+    # fall back to the unquantized (but still much smaller than the original)
+    # model rather than crash the server on unsupported platforms.
+    try:
+        _aspect_model = torch.quantization.quantize_dynamic(
+            _aspect_model, {torch.nn.Linear}, dtype=torch.qint8
+        )
+    except RuntimeError as exc:
+        print(f"[startup] Skipping CPU quantization (unsupported on this platform): {exc}")
 
 aspect_classifier = pipeline(
     "zero-shot-classification",
