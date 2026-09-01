@@ -136,7 +136,7 @@ def _fetch_places_pages(query_string, max_pages=1, page_delay_seconds=2.0):
     return all_places
 
 
-def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=1):
+def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=20):
     if not area or not area.strip():
         raise ValueError("area is required (e.g. 'Dubai Marina').")
 
@@ -177,25 +177,18 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=1):
     }
     UNKNOWN_PRICE = {"min": q2, "max": q2, "label": "N/A"}
 
-    parsed_reviews = []
-    exact_price_count = 0
-    estimated_price_count = 0
-    analyzed_restaurants = set()
-
+    # Pass 1: compute each place's price info and apply the budget filter
+    # across the FULL fetched candidate pool (not just whichever page they
+    # landed on), so narrowing to the highest-rated spots next isn't skewed
+    # by restaurants that wouldn't have fit the budget anyway.
+    candidates = []
     for place in places:
         place_id = place.get("id")
         restaurant_name = place.get("displayName", {}).get("text")
-        cuisine_type = place.get("primaryTypeDisplayName", {}).get("text", "General Dining")
         if not place_id or not restaurant_name:
             continue
 
-        location = place.get("location", {})
-        lat = location.get("latitude")
-        lng = location.get("longitude")
-        user_rating_count = place.get("userRatingCount", 0)
-        address = place.get("formattedAddress") or place.get("shortFormattedAddress", "Dubai, UAE")
         p_range = place.get("priceRange")
-
         if (p_range
             and p_range.get("startPrice", {}).get("units")
             and p_range.get("startPrice", {}).get("currencyCode") == "AED"):
@@ -218,8 +211,44 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=1):
         if max_budget is not None and min_price > max_budget:
             continue
 
-        analyzed_restaurants.add(place_id)
-        if is_exact:
+        candidates.append({
+            "place": place,
+            "place_id": place_id,
+            "restaurant_name": restaurant_name,
+            "min_price": min_price,
+            "max_price": max_price,
+            "price_display": price_display,
+            "price_source": price_source,
+            "is_exact": is_exact,
+        })
+
+    # Keep only the highest-rated candidates. Google's Text Search only
+    # supports rankPreference RELEVANCE or DISTANCE -- there is no native
+    # "sort by rating" -- so without this step we'd analyze whichever
+    # restaurants happened to rank first for the search text, not
+    # necessarily the best ones in the area.
+    candidates.sort(
+        key=lambda c: (c["place"].get("rating", 0) or 0, c["place"].get("userRatingCount", 0) or 0),
+        reverse=True,
+    )
+    candidates = candidates[:top_n]
+
+    parsed_reviews = []
+    exact_price_count = 0
+    estimated_price_count = 0
+    analyzed_restaurants = set()
+
+    for c in candidates:
+        place = c["place"]
+        cuisine_type = place.get("primaryTypeDisplayName", {}).get("text", "General Dining")
+        location = place.get("location", {})
+        lat = location.get("latitude")
+        lng = location.get("longitude")
+        user_rating_count = place.get("userRatingCount", 0)
+        address = place.get("formattedAddress") or place.get("shortFormattedAddress", "Dubai, UAE")
+
+        analyzed_restaurants.add(c["place_id"])
+        if c["is_exact"]:
             exact_price_count += 1
         else:
             estimated_price_count += 1
@@ -229,13 +258,13 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=1):
             publish_time = review.get("publishTime", "")
             if text:
                 parsed_reviews.append({
-                    "place_id": place_id,
-                    "restaurant_name": restaurant_name,
+                    "place_id": c["place_id"],
+                    "restaurant_name": c["restaurant_name"],
                     "cuisine": cuisine_type,
-                    "price_range": price_display,
-                    "price_numeric": min_price,
-                    "price_numeric_max": max_price,
-                    "price_source": price_source,
+                    "price_range": c["price_display"],
+                    "price_numeric": c["min_price"],
+                    "price_numeric_max": c["max_price"],
+                    "price_source": c["price_source"],
                     "review_rating": review.get("rating"),
                     "review_text": text,
                     "publish_time": publish_time,
