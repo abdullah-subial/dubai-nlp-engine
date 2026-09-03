@@ -1,4 +1,5 @@
 <title>Find My Table</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%BD%EF%B8%8F%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Plus+Jakarta+Sans:wght@600;700;800&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -153,6 +154,17 @@ h1 em{
 }
 .suggest-item:hover, .suggest-item.active{background:rgba(114,28,59,0.1);}
 
+.field.has-error{animation:shake 0.4s ease;}
+.field.has-error label{color:#b3261e;}
+.field.has-error input{border-color:#b3261e;}
+.field-error{color:#b3261e;font-size:0.8rem;margin-top:4px;}
+@keyframes shake{
+  10%,90%{transform:translateX(-2px);}
+  20%,80%{transform:translateX(4px);}
+  30%,50%,70%{transform:translateX(-6px);}
+  40%,60%{transform:translateX(6px);}
+}
+
 .finder-divider{width:1px; background:var(--line); margin:10px 0; align-self:stretch;}
 .finder-submit{
   display:flex; align-items:center; justify-content:center; gap:9px;
@@ -206,10 +218,11 @@ footer{
 
   <form class="finder" id="finderForm">
     <div class="finder-fields">
-      <div class="field">
+      <div class="field" id="areaField">
         <label for="areaInput">Area <span style="color:var(--gold)">*</span></label>
-        <input id="areaInput" type="text" placeholder="e.g. Dubai Marina" autofocus required autocomplete="off">
+        <input id="areaInput" type="text" placeholder="e.g. Dubai Marina" autofocus required autocomplete="off" aria-describedby="areaError">
         <div class="suggest-list" id="areaSuggest"></div>
+        <div class="field-error" id="areaError" role="alert" hidden>Please enter an area to search.</div>
       </div>
       <div class="finder-divider"></div>
       <div class="field">
@@ -250,57 +263,120 @@ footer{
   if(initParams.get("cuisine")) document.getElementById("cuisineInput").value = initParams.get("cuisine");
   if(initParams.get("budget")) document.getElementById("budgetInput").value = initParams.get("budget");
 
-  const AREA_OPTIONS = [
-    "Dubai Marina", "Downtown Dubai", "Jumeirah Beach Residence (JBR)", "Business Bay",
-    "Palm Jumeirah", "Deira", "Bur Dubai", "Al Barsha", "Jumeirah Lake Towers (JLT)",
-    "Dubai Hills Estate", "DIFC", "Al Quoz", "City Walk", "La Mer", "Umm Suqeim",
-    "Al Karama", "Satwa", "Mirdif", "Arabian Ranches", "Dubai Silicon Oasis",
-    "International City", "Discovery Gardens",
-  ];
   const CUISINE_OPTIONS = [
     "Emirati", "Lebanese", "Indian", "Italian", "Japanese", "Chinese", "Turkish",
     "Mediterranean", "Seafood", "Steakhouse", "Filipino", "Thai", "French", "American",
   ];
 
-  function setupSuggest(inputId, listId, options){
+  function fetchAreaSuggestions(q){
+    return fetch(`/api/area-suggest?q=${encodeURIComponent(q)}`)
+      .then(res => res.ok ? res.json() : { suggestions: [] })
+      .then(data => data.suggestions || [])
+      .catch(() => []);
+  }
+
+  // `source` is either a static array (Cuisine -- filtered client-side) or
+  // an async function(query) => Promise<string[]> (Area -- live, debounced
+  // lookup against /api/area-suggest, since only Google's own database can
+  // realistically cover every real Dubai locality).
+  function setupSuggest(inputId, listId, source){
     const input = document.getElementById(inputId);
     const list = document.getElementById(listId);
+    const isStatic = Array.isArray(source);
+    let activeIndex = -1;
+    let currentItems = [];
+    let debounceTimer = null;
+    let requestSeq = 0;
 
-    function render(){
-      const q = input.value.trim().toLowerCase();
-      const matches = q
-        ? options.filter(o => o.toLowerCase().includes(q))
-        : options;
-      if(!matches.length){ list.classList.remove("open"); list.innerHTML = ""; return; }
-      list.innerHTML = matches.map(o => `<div class="suggest-item">${o}</div>`).join("");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-expanded", "false");
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-controls", listId);
+    list.setAttribute("role", "listbox");
+
+    function renderItems(items){
+      currentItems = items;
+      activeIndex = -1;
+      if(!items.length){
+        list.classList.remove("open");
+        list.innerHTML = "";
+        input.setAttribute("aria-expanded", "false");
+        input.removeAttribute("aria-activedescendant");
+        return;
+      }
+      list.innerHTML = items.map((o, i) => `<div class="suggest-item" role="option" id="${listId}-opt-${i}">${o}</div>`).join("");
       list.classList.add("open");
+      input.setAttribute("aria-expanded", "true");
     }
 
-    input.addEventListener("input", render);
-    input.addEventListener("focus", render);
+    function updateActive(){
+      Array.from(list.children).forEach((el, i) => {
+        el.classList.toggle("active", i === activeIndex);
+        el.setAttribute("aria-selected", i === activeIndex ? "true" : "false");
+      });
+      if(activeIndex >= 0){
+        input.setAttribute("aria-activedescendant", `${listId}-opt-${activeIndex}`);
+        const activeEl = list.children[activeIndex];
+        if(activeEl) activeEl.scrollIntoView({ block: "nearest" });
+      } else {
+        input.removeAttribute("aria-activedescendant");
+      }
+    }
+
+    function fetchAndRender(){
+      const q = input.value.trim();
+      if(isStatic){
+        const matches = q ? source.filter(o => o.toLowerCase().includes(q.toLowerCase())) : source;
+        renderItems(matches);
+        return;
+      }
+      if(q.length < 2){ renderItems([]); return; }
+      const seq = ++requestSeq;
+      source(q).then(items => {
+        if(seq !== requestSeq) return; // a newer request started -- ignore this stale response
+        renderItems(items);
+      });
+    }
+
+    input.addEventListener("input", () => {
+      clearTimeout(debounceTimer);
+      if(isStatic){ fetchAndRender(); return; }
+      debounceTimer = setTimeout(fetchAndRender, 280);
+    });
+    input.addEventListener("focus", fetchAndRender);
 
     list.addEventListener("mousedown", (e) => {
       const item = e.target.closest(".suggest-item");
       if(!item) return;
       e.preventDefault();
       input.value = item.textContent;
-      list.classList.remove("open");
+      renderItems([]);
     });
 
     input.addEventListener("keydown", (e) => {
-      if(e.key === "Escape"){ list.classList.remove("open"); }
-      if(e.key === "Enter" && list.classList.contains("open")){
-        const first = list.querySelector(".suggest-item");
-        if(first){ e.preventDefault(); input.value = first.textContent; list.classList.remove("open"); }
+      if(!list.classList.contains("open")) return;
+      if(e.key === "ArrowDown"){
+        e.preventDefault();
+        activeIndex = (activeIndex + 1) % currentItems.length;
+        updateActive();
+      } else if(e.key === "ArrowUp"){
+        e.preventDefault();
+        activeIndex = (activeIndex - 1 + currentItems.length) % currentItems.length;
+        updateActive();
+      } else if(e.key === "Enter"){
+        const pick = activeIndex >= 0 ? currentItems[activeIndex] : currentItems[0];
+        if(pick){ e.preventDefault(); input.value = pick; renderItems([]); }
+      } else if(e.key === "Escape"){
+        renderItems([]);
       }
     });
 
     document.addEventListener("click", (e) => {
-      if(!input.contains(e.target) && !list.contains(e.target)) list.classList.remove("open");
+      if(!input.contains(e.target) && !list.contains(e.target)) renderItems([]);
     });
   }
 
-  setupSuggest("areaInput", "areaSuggest", AREA_OPTIONS);
+  setupSuggest("areaInput", "areaSuggest", fetchAreaSuggestions);
   setupSuggest("cuisineInput", "cuisineSuggest", CUISINE_OPTIONS);
 
   function resetSubmitButton(){
@@ -314,10 +390,27 @@ footer{
   // button never gets stuck mid-search on return.
   window.addEventListener("pageshow", resetSubmitButton);
 
+  const areaField = document.getElementById("areaField");
+  const areaInputEl = document.getElementById("areaInput");
+  const areaErrorEl = document.getElementById("areaError");
+
+  function clearAreaError(){
+    areaField.classList.remove("has-error");
+    areaErrorEl.hidden = true;
+  }
+
+  areaInputEl.addEventListener("input", clearAreaError);
+
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const area = document.getElementById("areaInput").value.trim();
-    if(!area) return;
+    if(!area){
+      areaField.classList.add("has-error");
+      areaErrorEl.hidden = false;
+      areaInputEl.focus();
+      return;
+    }
+    clearAreaError();
     btn.classList.add("is-loading");
     label.textContent = "Searching…";
     const cuisine = document.getElementById("cuisineInput").value.trim();
