@@ -1,4 +1,5 @@
 <title>Your Table Awaits</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%BD%EF%B8%8F%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Plus+Jakarta+Sans:wght@600;700;800&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -13,7 +14,7 @@
   --cream:#f7f4f0;
   --paper:#fffdfb;
   --ink:#2b1820;
-  --muted:#78616b;
+  --muted:#6d5760;
   --line:#e8dcd4;
   --line-soft:#f0e4dc;
   --shadow: 0 20px 50px -20px rgba(74,18,38,0.25);
@@ -73,7 +74,10 @@ a{color:inherit; text-decoration:none;}
   transition:background .18s ease;
 }
 .new-search-btn:hover{background:var(--maroon-ink);}
-@media (max-width:820px){ .query-summary{display:none;} }
+@media (max-width:820px){
+  .nav{flex-wrap:wrap; row-gap:10px;}
+  .query-summary{order:3; width:100%; font-size:0.82rem;}
+}
 
 /* ============ SECTION SHELL ============ */
 .wrap{max-width:var(--maxw); margin:0 auto; padding:0 clamp(20px,4vw,56px);}
@@ -227,19 +231,24 @@ a{color:inherit; text-decoration:none;}
 .chart-canvas-wrap{height:280px; position:relative;}
 .chart-canvas-wrap.compact{flex:1; min-height:220px; position:relative;}
 
-/* Minimal hidden-gem note -- a plain highlighted line, not a boxed callout */
+/* Minimal best-value note -- a plain highlighted line, not a boxed callout */
 .gem-note{display:flex; align-items:baseline; gap:8px; font-size:0.86rem; color:var(--muted); margin-bottom:14px; line-height:1.4;}
 .gem-note .gem-star-icon{width:14px; height:14px; flex-shrink:0; position:relative; top:2px;}
 .gem-note b{color:var(--ink); font-weight:700;}
 
 .table-scroll{overflow-x:auto; overflow-y:auto; max-height:520px;}
 .data-table{width:100%; border-collapse:collapse; font-size:0.86rem; min-width:1040px;}
-.data-table th{text-align:left; padding:10px 14px; font-size:0.7rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); border-bottom:2px solid var(--line); white-space:nowrap; position:sticky; top:0; background:var(--paper); z-index:1;}
+.data-table th{text-align:left; padding:10px 14px; font-size:0.7rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted); border-bottom:2px solid var(--line); white-space:normal; max-width:140px; line-height:1.4; position:sticky; top:0; background:var(--paper); z-index:1;}
+.data-table th.sortable{cursor:pointer; user-select:none;}
+.data-table th.sortable:hover{color:var(--maroon);}
+.data-table th.sortable.active{color:var(--maroon);}
+.data-table th.sortable:focus-visible{outline:2px solid var(--gold); outline-offset:-2px;}
 .data-table td{padding:12px 14px; border-bottom:1px solid var(--line-soft); white-space:nowrap;}
 .data-table tr:hover td{background:var(--cream);}
-.data-table .rname{font-weight:700; color:var(--maroon-ink);}
+.data-table .rname{font-weight:700; color:var(--maroon-ink); white-space:normal; min-width:160px; max-width:240px;}
 .data-table .num{font-variant-numeric:tabular-nums; font-weight:600;}
-.data-table .addr{max-width:220px; overflow:hidden; text-overflow:ellipsis; cursor:default;}
+.data-table .addr{max-width:220px;}
+.data-table .addr-inner{display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:default;}
 
 /* ============ METHODOLOGY / TRUST PANEL ============ */
 .methodology{background:var(--paper); border:1px solid var(--line); border-radius:26px; padding:clamp(20px,2.2vw,30px);}
@@ -250,10 +259,12 @@ a{color:inherit; text-decoration:none;}
 @media (max-width:860px){ .methodology-col + .methodology-col{border-left:none; padding-left:0; border-top:1px solid var(--line-soft); padding-top:20px;} }
 .formula-list{margin-bottom:0;}
 .formula-item{
-  display:grid; grid-template-columns:48px 160px 1fr; gap:14px; align-items:baseline;
+  display:grid; grid-template-columns:88px 160px 1fr; gap:14px; align-items:baseline;
   padding:8px 0; border-bottom:1px solid var(--line-soft);
 }
 .formula-item:last-child{border-bottom:none;}
+.formula-item.penalty{border-top:1px dashed var(--line); margin-top:4px; padding-top:14px;}
+.formula-item.penalty .w{color:#b3261e; font-size:0.76rem; line-height:1.3;}
 .formula-item .w{font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; color:var(--gold); font-size:0.88rem;}
 .formula-item .n{font-size:0.83rem; font-weight:700; color:var(--ink);}
 .formula-item .d{font-size:0.78rem; color:var(--muted); line-height:1.35;}
@@ -264,9 +275,13 @@ a{color:inherit; text-decoration:none;}
 .assumptions li::before{content:'—'; position:absolute; left:0; color:var(--gold); font-weight:700;}
 
 /* ============ OTHER RESTAURANTS GRID ============ */
-.grid{display:grid; grid-template-columns:repeat(3,1fr); gap:22px;}
-@media (max-width:820px){ .grid{grid-template-columns:repeat(2,1fr);} }
-@media (max-width:520px){ .grid{grid-template-columns:1fr;} }
+/* Flex instead of grid so a row with fewer than 3 cards keeps them at their
+   natural width (left-aligned) instead of grid stretching a lone card to
+   fill the whole row. */
+.grid{display:flex; flex-wrap:wrap; gap:22px;}
+.grid .card{flex:1 1 300px; max-width:calc((100% - 44px)/3);}
+@media (max-width:820px){ .grid .card{max-width:calc((100% - 22px)/2);} }
+@media (max-width:520px){ .grid .card{max-width:100%;} }
 .card{background:var(--paper); border:1px solid var(--line); border-radius:20px; overflow:hidden; display:flex; flex-direction:column; transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease;}
 .card:hover{transform:translateY(-4px); box-shadow:0 22px 40px -22px rgba(114,28,59,0.3); border-color:var(--gold-soft);}
 .card-band{height:64px; background:linear-gradient(120deg, var(--maroon), var(--maroon-ink) 60%, var(--rose)); position:relative;}
@@ -300,10 +315,10 @@ a{color:inherit; text-decoration:none;}
 
 /* ============ FOOTER ============ */
 footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
-.footer-inner{max-width:var(--maxw); margin:0 auto; padding:56px clamp(20px,4vw,56px) 36px; display:grid; grid-template-columns:1.4fr 1fr; gap:40px;}
+.footer-inner{max-width:var(--maxw); margin:0 auto; padding:56px clamp(20px,4vw,56px) 36px; display:grid; grid-template-columns:1fr 1fr; gap:40px;}
 @media (max-width:640px){ .footer-inner{grid-template-columns:1fr; row-gap:32px;} }
 .footer-inner .wordmark{color:#fdf1e0;}
-.footer-blurb{font-size:0.85rem; line-height:1.6; color:#d7abb3; margin-top:14px; max-width:34ch;}
+.footer-blurb{font-size:0.85rem; line-height:1.6; color:#d7abb3; margin-top:14px; max-width:42ch;}
 .footer-heading{font-size:0.72rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:var(--gold-soft); margin-bottom:14px;}
 .footer-links{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px;}
 .footer-links a{font-size:0.85rem; color:#e9c9cf;}
@@ -318,7 +333,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
 
 <div class="nav-shell">
   <nav class="nav">
-    <a class="wordmark" href="#" title="Back to search">DINE<span class="dot"></span>DUBAI</a>
+    <a class="wordmark" href="/" title="Back to search">DINE<span class="dot"></span>DUBAI</a>
     <div class="query-summary" id="querySummary"></div>
     <button class="new-search-btn" type="button" id="newSearchBtn">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 2v20M2 12h20"/></svg>
@@ -363,7 +378,10 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
   function escapeHtml(str){
     const div = document.createElement('div');
     div.textContent = String(str == null ? '' : str);
-    return div.innerHTML;
+    // textContent->innerHTML escapes &, <, > but not quotes (safe in text
+    // nodes) -- escape those too so this is also safe inside an attribute,
+    // e.g. an address containing a quoted building name in a title="".
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   function animateCount(el, target, suffix){
@@ -408,7 +426,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
 
   function buildVibeTags(vibeCheckStr, max){
     const list = String(vibeCheckStr||"").split(",").map(v=>v.trim()).filter(Boolean).slice(0, max || 5);
-    return list.map(word => `<span class="vibe-pill">${word}</span>`).join('');
+    return list.map(word => `<span class="vibe-pill">${escapeHtml(word)}</span>`).join('');
   }
 
   function renderTopPick(r){
@@ -420,11 +438,11 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
           <div class="pick-identity">
             <div class="pick-identity-text">
               <div class="pick-badge">✦ Highest Rated Match</div>
-              <div class="pick-name">${r.restaurant_name}</div>
+              <div class="pick-name">${escapeHtml(r.restaurant_name)}</div>
             </div>
             <div class="pick-address">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-              ${r.address}
+              ${escapeHtml(r.address)}
             </div>
           </div>
 
@@ -437,7 +455,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
               <div class="stat-box-divider"></div>
               <div>
                 <div class="stat-block-label">Budget / Person</div>
-                <div class="spend-num">${r.price_range}</div>
+                <div class="spend-num">${escapeHtml(r.price_range)}</div>
               </div>
             </div>
             <div class="stat-box">
@@ -455,12 +473,12 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
             <div class="stat-box">
               <div>
                 <div class="stat-block-label">Cuisine</div>
-                <div class="cuisine-val">${r.cuisine}</div>
+                <div class="cuisine-val">${escapeHtml(r.cuisine)}</div>
               </div>
               <div class="stat-box-divider"></div>
               <div>
                 <div class="stat-block-label">Famous Dish</div>
-                <div class="dish-name">${r.famous_dish}</div>
+                <div class="dish-name">${escapeHtml(r.famous_dish)}</div>
               </div>
             </div>
           </div>
@@ -474,7 +492,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
               <div class="panel-heading" style="margin-bottom:12px;">Latest Reviews</div>
               <div class="review-list">
                 ${(r.recent_3_reviews||[]).slice(0,3).map(rev=>`
-                  <div class="review-card"><div class="review-quote">"${rev.review_text}"</div><div class="review-rating">${rev.review_rating}★</div></div>
+                  <div class="review-card"><div class="review-quote">"${escapeHtml(rev.review_text)}"</div><div class="review-rating">${rev.review_rating}★</div></div>
                 `).join('')}
               </div>
             </div>
@@ -495,13 +513,13 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
           <div class="card fade-in" style="animation-delay:${i*60}ms">
             <div class="card-band"><div class="score-chip"><b>${r.model_score}</b><span>Score</span></div></div>
             <div class="card-body">
-              <div><div class="card-name">${r.restaurant_name}</div><div class="card-cuisine">Cuisine: ${r.cuisine}</div><div class="card-address"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>${r.address||''}</div></div>
+              <div><div class="card-name">${escapeHtml(r.restaurant_name)}</div><div class="card-cuisine">Cuisine: ${escapeHtml(r.cuisine)}</div><div class="card-address"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>${escapeHtml(r.address||'')}</div></div>
               <div class="card-meta">
                 <span>${r.avg_google_rating} <span class="gold">★</span></span>
-                <span>${r.price_range}</span>
+                <span>${escapeHtml(r.price_range)}</span>
               </div>
-              <div class="card-dish"><span>Famous Dish</span>${r.famous_dish}</div>
-              <div class="card-vibes">${String(r.vibe_check||"").split(",").slice(0,3).map(v=>`<span class="pill">${v.trim()}</span>`).join('')}</div>
+              <div class="card-dish"><span>Famous Dish</span>${escapeHtml(r.famous_dish)}</div>
+              <div class="card-vibes">${String(r.vibe_check||"").split(",").slice(0,3).map(v=>`<span class="pill">${escapeHtml(v.trim())}</span>`).join('')}</div>
             </div>
           </div>
         `).join('')}
@@ -518,7 +536,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     return ((h % 1000) / 1000 - 0.5) * amplitude;
   }
 
-  // A single drawn 5-point star, reused both as the chart's hidden-gem
+  // A single drawn 5-point star, reused both as the chart's best-value
   // marker and as the icon in the gem-note text, so the two visually match
   // instead of a Unicode "★" next to Chart.js's built-in star primitive.
   function makeStarIcon(size, color){
@@ -546,7 +564,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
   const GEM_STAR_ICON = makeStarIcon(22, '#d98e28');
 
   let charts = {};
-  function renderCharts(results, showCuisineChart, hiddenGem){
+  function renderCharts(results, showCuisineChart, bestValue){
     if (typeof Chart === "undefined") {
       throw new Error("Chart.js did not load");
     }
@@ -567,23 +585,23 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
           };
         }),
         backgroundColor: results.map(r => {
-          if (hiddenGem && r.restaurant_name === hiddenGem.restaurant_name) return '#1f7a5c';
+          if (bestValue && r.restaurant_name === bestValue.restaurant_name) return '#1f7a5c';
           const priceMax = r.price_numeric_max || r.price_numeric;
           return (r.model_score >= 82 && priceMax <= 120) ? 'rgba(217,142,40,0.8)' : 'rgba(114,28,59,0.55)';
         }),
-        borderColor: results.map(r => (hiddenGem && r.restaurant_name === hiddenGem.restaurant_name) ? '#d98e28' : '#fffdfb'),
-        borderWidth: results.map(r => (hiddenGem && r.restaurant_name === hiddenGem.restaurant_name) ? 3 : 1.5),
-        pointStyle: results.map(r => (hiddenGem && r.restaurant_name === hiddenGem.restaurant_name) ? GEM_STAR_ICON : 'circle')
+        borderColor: results.map(r => (bestValue && r.restaurant_name === bestValue.restaurant_name) ? '#d98e28' : '#fffdfb'),
+        borderWidth: results.map(r => (bestValue && r.restaurant_name === bestValue.restaurant_name) ? 3 : 1.5),
+        pointStyle: results.map(r => (bestValue && r.restaurant_name === bestValue.restaurant_name) ? GEM_STAR_ICON : 'circle')
       }]},
       options:{
         responsive:true, maintainAspectRatio:false,
         plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:(ctx)=>{
-          const isGem = hiddenGem && ctx.raw.name === hiddenGem.restaurant_name;
-          return `${isGem ? '★ ' : ''}${ctx.raw.name}: AED ${Math.round(ctx.raw.trueX)}, Score ${Math.round(ctx.raw.trueY)}`;
+          const isBest = bestValue && ctx.raw.name === bestValue.restaurant_name;
+          return `${isBest ? '★ ' : ''}${ctx.raw.name}: AED ${Math.round(ctx.raw.trueX)}, Score ${Math.round(ctx.raw.trueY)}`;
         } } } },
         scales:{
-          x:{ title:{display:true, text:'Price per person (AED)', color:'#78616b'}, grid:{color:'#f0e4dc'}, ticks:{color:'#78616b'} },
-          y:{ title:{display:true, text:'Model Score', color:'#78616b'}, grid:{color:'#f0e4dc'}, ticks:{color:'#78616b'}, min:Math.max(0, Math.floor(Math.min(...results.map(r=>r.model_score))) - 5), max:100 }
+          x:{ title:{display:true, text:'Price per person (AED)', color:'#6d5760'}, grid:{color:'#f0e4dc'}, ticks:{color:'#6d5760'} },
+          y:{ title:{display:true, text:'Model Score', color:'#6d5760'}, grid:{color:'#f0e4dc'}, ticks:{color:'#6d5760'}, min:Math.max(0, Math.floor(Math.min(...results.map(r=>r.model_score))) - 5), max:100 }
         }
       }
     });
@@ -602,7 +620,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
           tooltip:{ callbacks:{ title:(items)=> byScore[items[0].dataIndex].restaurant_name } }
         },
         scales:{
-          x:{ min:0, max:100, grid:{color:'#f0e4dc'}, ticks:{color:'#78616b'} },
+          x:{ min:0, max:100, grid:{color:'#f0e4dc'}, ticks:{color:'#6d5760'} },
           y:{
             grid:{display:false},
             ticks:{
@@ -618,7 +636,10 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     });
 
     if (showCuisineChart) {
-      const CUISINE_PALETTE = ['#721c3b','#d98e28','#8c3556','#2b1820','#f0c987','#a9576d','#4a1226','#e8b563','#78616b'];
+      const CUISINE_PALETTE = [
+        '#721c3b','#d98e28','#8c3556','#2b1820','#f0c987','#a9576d','#4a1226','#e8b563','#6d5760',
+        '#c96a86','#7a9e8a','#b5701a','#4f7a8c','#c2503f','#9b7fb0','#5e8a4a',
+      ];
       const cuisineCounts = {};
       results.forEach(r => { cuisineCounts[r.cuisine] = (cuisineCounts[r.cuisine]||0) + 1; });
       const cuisineLabels = Object.keys(cuisineCounts);
@@ -626,7 +647,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
         type:'doughnut',
         data:{
           labels: cuisineLabels,
-          datasets:[{ data: cuisineLabels.map(c=>cuisineCounts[c]), backgroundColor: CUISINE_PALETTE, borderColor:'#fffdfb', borderWidth:2 }]
+          datasets:[{ data: cuisineLabels.map(c=>cuisineCounts[c]), backgroundColor: cuisineLabels.map((_,i)=>CUISINE_PALETTE[i % CUISINE_PALETTE.length]), borderColor:'#fffdfb', borderWidth:2 }]
         },
         options:{
           responsive:true, maintainAspectRatio:false, cutout:'78%',
@@ -636,30 +657,79 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     }
   }
 
-  function computeHiddenGem(results){
-    return [...results].filter(r=>r.model_score>=82).sort((a,b)=>a.total_google_ratings-b.total_google_ratings)[0] || results[0];
+  // Model Score / avg. price per person -- how much score you're getting for
+  // the money. Restaurants scoring 85+ are considered first (a quality
+  // floor, so "best value" never means "cheap and mediocre"); if nothing
+  // clears that bar, we fall back to the best ratio across everyone.
+  function computeBestValue(results){
+    function ratio(r){
+      const avgPrice = ((r.price_numeric||0) + (r.price_numeric_max||r.price_numeric||0)) / 2;
+      return avgPrice > 0 ? r.model_score / avgPrice : 0;
+    }
+    const qualified = results.filter(r => r.model_score >= 85);
+    const pool = qualified.length ? qualified : results;
+    return [...pool].sort((a,b) => ratio(b) - ratio(a))[0] || results[0];
   }
 
-  function renderDataTable(results, targetId){
+  let tableSort = { key: 'model_score', dir: 'desc' };
+  let tableResults = [];
+
+  function sortByKey(results, key, dir){
+    const sorted = [...results].sort((a,b) => (a[key]||0) - (b[key]||0));
+    if(dir === 'desc') sorted.reverse();
+    return sorted;
+  }
+
+  function renderDataTable(results, targetId, sortable){
     targetId = targetId || 'dataTable';
-    const sorted = [...results].sort((a,b)=>b.model_score-a.model_score);
+    let sorted;
+    if(sortable){
+      tableResults = results;
+      sorted = sortByKey(tableResults, tableSort.key, tableSort.dir);
+    } else {
+      sorted = [...results].sort((a,b)=>b.model_score-a.model_score);
+    }
     const rows = sorted.map(r => `
       <tr>
-        <td class="rname">${r.restaurant_name}</td>
-        <td>${r.cuisine}</td>
+        <td class="rname">${escapeHtml(r.restaurant_name)}</td>
+        <td>${escapeHtml(r.cuisine)}</td>
         <td class="num">${r.model_score}</td>
         <td class="num">${r.avg_google_rating}★</td>
         <td class="num">${r.total_google_ratings.toLocaleString()}</td>
         <td class="num">${r.positive_sentiment_pct}%</td>
-        <td>${r.price_range}</td>
-        <td class="addr" title="${escapeHtml(r.address||'')}">${r.address||''}</td>
+        <td>${escapeHtml(r.price_range)}</td>
+        <td class="addr"><span class="addr-inner" title="${escapeHtml(r.address||'')}">${escapeHtml(r.address||'')}</span></td>
       </tr>`).join('');
+
+    function th(label, key){
+      if(!sortable || !key) return `<th>${label}</th>`;
+      const isActive = tableSort.key === key;
+      const arrow = isActive ? (tableSort.dir === 'desc' ? ' ▼' : ' ▲') : '';
+      const ariaSort = isActive ? (tableSort.dir === 'desc' ? 'descending' : 'ascending') : 'none';
+      return `<th class="sortable${isActive?' active':''}" data-sort-key="${key}" tabindex="0" role="button" aria-sort="${ariaSort}">${label}${arrow}</th>`;
+    }
+
     document.getElementById(targetId).innerHTML = `
       <thead><tr>
-        <th>Restaurant</th><th>Cuisine</th><th>Model Score</th><th>Google Rating</th><th>Ratings</th>
-        <th>Google Review Sentiment</th><th>Price Range</th><th>Address</th>
+        <th>Restaurant</th><th>Cuisine</th>
+        ${th('Model Score','model_score')}${th('Google Rating','avg_google_rating')}${th('Unique Google Ratings','total_google_ratings')}
+        ${th('Google Review Sentiment','positive_sentiment_pct')}${th('Price Range','price_numeric')}<th>Address</th>
       </tr></thead>
       <tbody>${rows}</tbody>`;
+
+    if(sortable){
+      document.querySelectorAll(`#${targetId} th.sortable`).forEach(headerEl => {
+        function activateSort(){
+          const key = headerEl.dataset.sortKey;
+          tableSort = tableSort.key === key ? { key, dir: tableSort.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: 'desc' };
+          renderDataTable(tableResults, targetId, true);
+        }
+        headerEl.addEventListener('click', activateSort);
+        headerEl.addEventListener('keydown', (e) => {
+          if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); activateSort(); }
+        });
+      });
+    }
   }
 
   function renderLiveScorecard(results, total){
@@ -671,27 +741,27 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
         <div class="chart-card-head"><div class="chart-title">Full Scorecard</div><div class="chart-sub">${label} — building your results…</div></div>
         <div class="table-scroll"><table class="data-table" id="liveDataTable"></table></div>
       </div>`;
-    renderDataTable(results, 'liveDataTable');
+    renderDataTable(results, 'liveDataTable', false);
   }
 
   function renderInsights(results, cuisineFilter){
     if(!results.length){ $("#insightsSection").innerHTML = ''; return; }
     const showCuisineChart = !cuisineFilter || !cuisineFilter.trim();
-    const hiddenGem = computeHiddenGem(results);
+    const bestValue = computeBestValue(results);
 
-    const hiddenGemCard = `
+    const bestValueCard = `
       <div class="chart-card">
         <div class="chart-card-head">
-          <div class="chart-title">Hidden Gem Finder</div>
+          <div class="chart-title">Best Value for Money</div>
           <div class="chart-sub">Price vs. Model Score</div>
           <div class="chart-sub">Bubble size = number of reviews</div>
         </div>
-        <div class="gem-note"><img class="gem-star-icon" src="${GEM_STAR_ICON.src}" alt=""><span><b>Hidden Gem</b> — ${hiddenGem.restaurant_name}, high score with fewer reviews yet</span></div>
+        <div class="gem-note"><img class="gem-star-icon" src="${GEM_STAR_ICON.src}" alt=""><span><b>Best Value for Money</b> — ${escapeHtml(bestValue.restaurant_name)}, the highest score for the price among today's results</span></div>
         <div class="chart-canvas-wrap compact"><canvas id="scatterChart"></canvas></div>
       </div>`;
     const barChartCard = `
       <div class="chart-card">
-        <div class="chart-card-head"><div class="chart-title">Model Score Ranking</div><div class="chart-sub">All analyzed spots, highest to lowest</div></div>
+        <div class="chart-card-head"><div class="chart-title">Top Restaurants by Model Score</div><div class="chart-sub">All analyzed spots, highest to lowest</div></div>
         <div class="chart-canvas-wrap"><canvas id="barChart"></canvas></div>
       </div>`;
     const cuisineChartCard = `
@@ -701,22 +771,22 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
       </div>`;
 
     // With no cuisine filter, 3 charts side by side got cluttered -- pair
-    // Hidden Gem + Cuisine Mix in one row and give the bar chart its own
+    // Best Value + Cuisine Mix in one row and give the bar chart its own
     // full-width row below instead.
     const chartsHtml = showCuisineChart
-      ? `<div class="insights-grid-2">${hiddenGemCard}${cuisineChartCard}</div>
+      ? `<div class="insights-grid-2">${bestValueCard}${cuisineChartCard}</div>
          <div style="margin-top:22px;">${barChartCard}</div>`
-      : `<div class="insights-grid-2">${hiddenGemCard}${barChartCard}</div>`;
+      : `<div class="insights-grid-2">${bestValueCard}${barChartCard}</div>`;
 
     $("#insightsSection").innerHTML = `
       <div class="section-heading"><span class="spark">✦</span><h2>Market Insights</h2></div>
       ${chartsHtml}
       <div class="chart-card" style="margin-top:22px;">
-        <div class="chart-card-head"><div class="chart-title">Full Scorecard</div><div class="chart-sub">Every metric behind the ranking, for every spot analyzed</div></div>
+        <div class="chart-card-head"><div class="chart-title">Restaurants Performance Overview</div><div class="chart-sub">Every metric behind the ranking, for every spot analyzed — click a column header to sort</div></div>
         <div class="table-scroll"><table class="data-table" id="dataTable"></table></div>
       </div>`;
-    renderCharts(results, showCuisineChart, hiddenGem);
-    renderDataTable(results);
+    renderCharts(results, showCuisineChart, bestValue);
+    renderDataTable(results, 'dataTable', true);
   }
 
   function renderMethodology(){
@@ -726,7 +796,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
       <div class="methodology">
         <div class="methodology-grid">
           <div class="methodology-col">
-            <p class="lead">Every spot gets one composite "Model Score" out of 100 — a weighted average of seven signals, so a place isn't ranked on stars alone.</p>
+            <p class="lead">Every spot gets one composite "Model Score" out of 100. Six signals below make up that full 100% — a separate penalty of up to 10 points can then be deducted for red flags in recent reviews, so a place isn't ranked on stars alone.</p>
             <div class="formula-list">
               <div class="formula-item"><div class="w">30%</div><div class="n">Guest Sentiment</div><div class="d">Share of reviews read as positive by our AI language model.</div></div>
               <div class="formula-item"><div class="w">25%</div><div class="n">Google Rating</div><div class="d">The venue's overall Google star rating.</div></div>
@@ -734,7 +804,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
               <div class="formula-item"><div class="w">10%</div><div class="n">Sentiment Momentum</div><div class="d">Whether recent reviews read even more positive than the star rating alone suggests.</div></div>
               <div class="formula-item"><div class="w">10%</div><div class="n">Aspect Score</div><div class="d">Sentiment specifically about food and service, not just the review overall.</div></div>
               <div class="formula-item"><div class="w">10%</div><div class="n">Price-to-Value</div><div class="d">Sentiment plus how reasonable guests find the price for what they get.</div></div>
-              <div class="formula-item"><div class="w">−10%</div><div class="n">Negativity Risk</div><div class="d">Penalty for very low ratings or strongly negative recent reviews.</div></div>
+              <div class="formula-item penalty"><div class="w">up to −10 pts</div><div class="n">Negativity Risk</div><div class="d">A separate deduction applied afterward — not one of the 100% above — for very low ratings or strongly negative recent reviews.</div></div>
             </div>
           </div>
           <div class="methodology-col">
@@ -829,7 +899,9 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
       } else if(evt.type === 'done'){
         finalPayload = evt;
       } else if(evt.type === 'error'){
-        throw new Error(evt.message);
+        const err = new Error(evt.message);
+        err.isSearchError = true;
+        throw err;
       }
     }
 
@@ -858,7 +930,9 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
       .catch(err => {
         console.error("Failed to load recommendations:", err);
         $("#liveScorecardSection").innerHTML = '';
-        $("#statsSection").innerHTML = `<div class="state-msg"><div class="big">Something went wrong.</div><div>Could not reach the server (${escapeHtml(err.message)}). Please try again.</div></div>`;
+        const heading = err.isSearchError ? "Couldn't search that area." : "Something went wrong.";
+        const detail = err.isSearchError ? escapeHtml(err.message) : `Could not reach the server (${escapeHtml(err.message)}). Please try again.`;
+        $("#statsSection").innerHTML = `<div class="state-msg"><div class="big">${heading}</div><div>${detail}</div></div>`;
         $("#transparencyNote").textContent = "Search failed.";
         clearSections();
       });
