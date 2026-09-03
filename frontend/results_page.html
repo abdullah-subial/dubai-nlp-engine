@@ -125,7 +125,7 @@ a{color:inherit; text-decoration:none;}
   font-size:clamp(2.6rem,3.4vw,3.35rem);
   color:var(--maroon-ink); letter-spacing:-0.02em; line-height:1;
 }
-.stat-num .unit{font-size:0.4em; font-weight:700; color:var(--gold); margin-left:5px; vertical-align:middle;}
+.stat-num .unit{font-size:0.58em; font-weight:700; color:var(--gold); margin-left:5px; vertical-align:middle;}
 .stat-num .currency{font-size:0.42em; font-weight:700; color:var(--gold); margin-left:6px; vertical-align:middle;}
 .stat-label{font-size:0.95rem; font-weight:600; color:var(--muted); letter-spacing:0.03em;}
 
@@ -247,8 +247,22 @@ a{color:inherit; text-decoration:none;}
 .data-table tr:hover td{background:var(--cream);}
 .data-table .rname{font-weight:700; color:var(--maroon-ink); white-space:normal; min-width:160px; max-width:240px;}
 .data-table .num{font-variant-numeric:tabular-nums; font-weight:600;}
-.data-table .addr{max-width:220px;}
-.data-table .addr-inner{display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:default;}
+.data-table .addr{max-width:260px;}
+.data-table .addr-inner{display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:help;}
+
+/* Custom address tooltip -- fixed-positioned and appended to <body>, so it
+   is never clipped by .table-scroll's overflow:auto the way a tooltip
+   nested inside the scrolling table would be. */
+.addr-tooltip{
+  position:fixed; z-index:999; max-width:300px;
+  background:var(--maroon-ink); color:#fdf1e0;
+  font-size:0.8rem; font-weight:500; line-height:1.45;
+  padding:9px 13px; border-radius:10px;
+  box-shadow:0 14px 30px -10px rgba(0,0,0,0.45);
+  pointer-events:none; opacity:0; transform:translateY(4px);
+  transition:opacity .12s ease, transform .12s ease;
+}
+.addr-tooltip.visible{opacity:1; transform:translateY(0);}
 
 /* ============ METHODOLOGY / TRUST PANEL ============ */
 .methodology{background:var(--paper); border:1px solid var(--line); border-radius:26px; padding:clamp(20px,2.2vw,30px);}
@@ -383,6 +397,53 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     // e.g. an address containing a quoted building name in a title="".
     return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
+
+  // Custom address tooltip, delegated at the document level so it works for
+  // every .addr-inner cell rendered now or later (live table, final table,
+  // any re-sort) without re-attaching listeners on every render. Fixed
+  // positioning + appending to <body> keeps it from being clipped by
+  // .table-scroll's overflow:auto, unlike a tooltip nested inside the table.
+  let addrTooltipEl = null;
+  function getAddrTooltip(){
+    if(!addrTooltipEl){
+      addrTooltipEl = document.createElement('div');
+      addrTooltipEl.className = 'addr-tooltip';
+      document.body.appendChild(addrTooltipEl);
+    }
+    return addrTooltipEl;
+  }
+  function showAddrTooltip(target){
+    const full = target.dataset.full;
+    if(!full) return;
+    const tip = getAddrTooltip();
+    tip.textContent = full;
+    tip.classList.add('visible');
+    const rect = target.getBoundingClientRect();
+    const top = rect.bottom + 8;
+    let left = rect.left;
+    const maxLeft = window.innerWidth - tip.offsetWidth - 12;
+    if(left > maxLeft) left = Math.max(12, maxLeft);
+    tip.style.top = top + 'px';
+    tip.style.left = left + 'px';
+  }
+  function hideAddrTooltip(){
+    if(addrTooltipEl) addrTooltipEl.classList.remove('visible');
+  }
+  document.addEventListener('mouseover', (e) => {
+    const el = e.target.closest('.addr-inner');
+    if(el) showAddrTooltip(el);
+  });
+  document.addEventListener('mouseout', (e) => {
+    if(e.target.closest('.addr-inner')) hideAddrTooltip();
+  });
+  document.addEventListener('focusin', (e) => {
+    const el = e.target.closest('.addr-inner');
+    if(el) showAddrTooltip(el);
+  });
+  document.addEventListener('focusout', (e) => {
+    if(e.target.closest('.addr-inner')) hideAddrTooltip();
+  });
+  window.addEventListener('scroll', hideAddrTooltip, true);
 
   function animateCount(el, target, suffix){
     const dur = 900, start = performance.now();
@@ -698,7 +759,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
         <td class="num">${r.total_google_ratings.toLocaleString()}</td>
         <td class="num">${r.positive_sentiment_pct}%</td>
         <td>${escapeHtml(r.price_range)}</td>
-        <td class="addr"><span class="addr-inner" title="${escapeHtml(r.address||'')}">${escapeHtml(r.address||'')}</span></td>
+        <td class="addr"><span class="addr-inner" tabindex="0" data-full="${escapeHtml(r.address||'')}">${escapeHtml(r.address||'')}</span></td>
       </tr>`).join('');
 
     function th(label, key){

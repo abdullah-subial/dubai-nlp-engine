@@ -385,8 +385,8 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=2
         "total_reviews": len(df_reviews),
         "exact_price_count": exact_price_count,
         "estimated_price_count": estimated_price_count,
-        "transparency_note": f"Found {len(places)} restaurants in the area. Analyzed the top {venue_count} by Google "
-                             f"rating — {venue_count} venue{'s' if venue_count != 1 else ''} across {len(df_reviews)} reviews. "
+        "transparency_note": f"Found {len(places)} restaurants in the area. Analyzed the top "
+                             f"{venue_count} venue{'s' if venue_count != 1 else ''} by Google rating, across {len(df_reviews)} reviews. "
                              f"{exact_price_count} using direct menu prices, "
                              f"{estimated_price_count} estimated via local area quartiles.",
     }])
