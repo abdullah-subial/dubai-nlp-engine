@@ -43,6 +43,7 @@ if not API_KEY:
     raise RuntimeError("GOOGLE_PLACES_API_KEY environment variable is not set.")
 
 PLACES_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
+PLACES_AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete"
 FIELD_MASK = (
     "places.id,"
     "places.displayName,"
@@ -153,6 +154,38 @@ def _fetch_places_pages(query_string, max_pages=1, page_delay_seconds=2.0, min_r
     return all_places
 
 
+def suggest_dubai_areas(query):
+    """Live-typeahead area suggestions restricted to UAE localities, via
+    Google's Places Autocomplete (New) API. Never raises -- a request
+    failure or unexpected response shape just yields no suggestions."""
+    if not query or not query.strip():
+        return []
+    headers = {"Content-Type": "application/json", "X-Goog-Api-Key": API_KEY}
+    payload = {
+        "input": query.strip(),
+        "includedRegionCodes": ["ae"],
+        "includedPrimaryTypes": ["locality", "sublocality", "neighborhood"],
+    }
+    try:
+        response = requests.post(PLACES_AUTOCOMPLETE_URL, headers=headers, json=payload, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+    except (requests.exceptions.RequestException, ValueError) as exc:
+        print(f"[area-suggest] request failed: {exc}")
+        return []
+
+    suggestions = []
+    for item in data.get("suggestions", []):
+        text = item.get("placePrediction", {}).get("text", {}).get("text")
+        if text:
+            suggestions.append(text)
+    return suggestions
+
+
+def is_recognized_dubai_area(area):
+    return bool(area and area.strip() and suggest_dubai_areas(area))
+
+
 def _clean_cuisine_label(raw):
     if not raw:
         return "General Dining"
@@ -160,11 +193,28 @@ def _clean_cuisine_label(raw):
     return cleaned or raw
 
 
+# Google's "type" field mixes real cuisines ("Italian Restaurant") with
+# dining-style descriptors that aren't cuisines at all ("Family Restaurant",
+# plain "Restaurant"). If the user explicitly searched a cuisine and Google's
+# own label for a matched place is one of these non-cuisine terms, showing
+# the searched cuisine is more informative than an uninformative style label.
+GENERIC_CUISINE_LABELS = {
+    "restaurant", "family", "fast food", "cafe", "diner",
+    "casual dining", "fine dining", "eatery", "food", "dining", "general dining",
+}
+
+
+def _resolve_cuisine_label(cuisine_label, searched_cuisine):
+    if searched_cuisine and searched_cuisine.strip() and cuisine_label.strip().lower() in GENERIC_CUISINE_LABELS:
+        return searched_cuisine.strip().title()
+    return cuisine_label
+
+
 # Tried strictest first -- a dense, popular area may have 20+ places at 4.8,
 # but most area/cuisine combos won't, so this usually cascades down. Each
 # step is just one extra Places API call (network-bound, a second or so),
 # not another pass through the NLP pipeline, so trying several is cheap.
-RATING_CASCADE = [4.8, 4.5, 4.0, 3.5, None]
+RATING_CASCADE = [5.0, 4.9, 4.8, 4.5, 4.0, 3.5, None]
 
 
 def _fetch_best_rated_places(query_string, max_pages, top_n):
@@ -179,6 +229,9 @@ def _fetch_best_rated_places(query_string, max_pages, top_n):
 def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=20):
     if not area or not area.strip():
         raise ValueError("area is required (e.g. 'Dubai Marina').")
+
+    if not is_recognized_dubai_area(area):
+        raise ValueError(f"'{area}' doesn't look like a recognized Dubai area. Try one of the suggested areas.")
 
     query_string = f"{cuisine} restaurants in {area}, Dubai".strip()
     places = _fetch_best_rated_places(query_string, max_pages=max_pages, top_n=top_n)
@@ -271,7 +324,6 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=2
         key=lambda c: (c["place"].get("rating", 0) or 0, c["place"].get("userRatingCount", 0) or 0),
         reverse=True,
     )
-    candidates = candidates[:top_n]
 
     parsed_reviews = []
     exact_price_count = 0
@@ -279,25 +331,24 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=2
     analyzed_restaurants = set()
 
     for c in candidates:
+        if len(analyzed_restaurants) >= top_n:
+            break
+
         place = c["place"]
         cuisine_type = _clean_cuisine_label(place.get("primaryTypeDisplayName", {}).get("text", "General Dining"))
+        cuisine_type = _resolve_cuisine_label(cuisine_type, cuisine)
         location = place.get("location", {})
         lat = location.get("latitude")
         lng = location.get("longitude")
         user_rating_count = place.get("userRatingCount", 0)
         address = place.get("formattedAddress") or place.get("shortFormattedAddress", "Dubai, UAE")
 
-        analyzed_restaurants.add(c["place_id"])
-        if c["is_exact"]:
-            exact_price_count += 1
-        else:
-            estimated_price_count += 1
-
+        place_reviews = []
         for review in place.get("reviews", []):
             text = review.get("text", {}).get("text")
             publish_time = review.get("publishTime", "")
             if text:
-                parsed_reviews.append({
+                place_reviews.append({
                     "place_id": c["place_id"],
                     "restaurant_name": c["restaurant_name"],
                     "cuisine": cuisine_type,
@@ -315,13 +366,27 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=2
                     "formatted_address": address,
                 })
 
+        if not place_reviews:
+            # No usable review text -- skip without counting it, so a
+            # lower-rated candidate backfills the slot instead.
+            continue
+
+        analyzed_restaurants.add(c["place_id"])
+        if c["is_exact"]:
+            exact_price_count += 1
+        else:
+            estimated_price_count += 1
+        parsed_reviews.extend(place_reviews)
+
     df_reviews = pd.DataFrame(parsed_reviews)
+    venue_count = len(analyzed_restaurants)
     df_summary = pd.DataFrame([{
-        "total_restaurants": len(analyzed_restaurants),
+        "total_restaurants": venue_count,
         "total_reviews": len(df_reviews),
         "exact_price_count": exact_price_count,
         "estimated_price_count": estimated_price_count,
-        "transparency_note": f"Analyzed {len(analyzed_restaurants)} venues across {len(df_reviews)} reviews. "
+        "transparency_note": f"Found {len(places)} restaurants in the area. Analyzed the top {venue_count} by Google "
+                             f"rating — {venue_count} venue{'s' if venue_count != 1 else ''} across {len(df_reviews)} reviews. "
                              f"{exact_price_count} using direct menu prices, "
                              f"{estimated_price_count} estimated via local area quartiles.",
     }])
@@ -828,6 +893,11 @@ app.add_middleware(
     allow_methods=["GET"],
     allow_headers=["*"],
 )
+
+
+@app.get("/api/area-suggest")
+def area_suggest(q: str = Query("", description="Partial area name typed so far")):
+    return {"suggestions": suggest_dubai_areas(q)}
 
 
 @app.get("/api/recommend")
