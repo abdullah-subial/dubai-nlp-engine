@@ -154,10 +154,25 @@ def _fetch_places_pages(query_string, max_pages=1, page_delay_seconds=2.0, min_r
     return all_places
 
 
+# Rough bounding rectangle around the Dubai emirate, used to restrict
+# area-suggest autocomplete to Dubai. Deliberately a bit generous (not a
+# tight fit) so real Dubai neighborhoods near the emirate's edges aren't
+# accidentally excluded -- the substring check below is the real filter.
+DUBAI_BOUNDS = {
+    "low": {"latitude": 24.70, "longitude": 54.85},
+    "high": {"latitude": 25.40, "longitude": 55.60},
+}
+
+
 def suggest_dubai_areas(query):
-    """Live-typeahead area suggestions restricted to UAE localities, via
-    Google's Places Autocomplete (New) API. Never raises -- a request
-    failure or unexpected response shape just yields no suggestions."""
+    """Live-typeahead area suggestions restricted to Dubai localities, via
+    Google's Places Autocomplete (New) API. This product only covers Dubai,
+    not the other emirates -- so results are geographically restricted to
+    Dubai's bounding box AND required to literally mention "Dubai" in the
+    returned text, since a geographic box alone can still surface a place
+    just across the border in a neighboring emirate. Never raises -- a
+    request failure or unexpected response shape just yields no suggestions.
+    """
     if not query or not query.strip():
         return []
     headers = {"Content-Type": "application/json", "X-Goog-Api-Key": API_KEY}
@@ -165,6 +180,7 @@ def suggest_dubai_areas(query):
         "input": query.strip(),
         "includedRegionCodes": ["ae"],
         "includedPrimaryTypes": ["locality", "sublocality", "neighborhood"],
+        "locationRestriction": {"rectangle": DUBAI_BOUNDS},
     }
     try:
         response = requests.post(PLACES_AUTOCOMPLETE_URL, headers=headers, json=payload, timeout=10)
@@ -177,7 +193,7 @@ def suggest_dubai_areas(query):
     suggestions = []
     for item in data.get("suggestions", []):
         text = item.get("placePrediction", {}).get("text", {}).get("text")
-        if text:
+        if text and "dubai" in text.lower():
             suggestions.append(text)
     return suggestions
 
