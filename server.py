@@ -198,10 +198,6 @@ def suggest_dubai_areas(query):
     return suggestions
 
 
-def is_recognized_dubai_area(area):
-    return bool(area and area.strip() and suggest_dubai_areas(area))
-
-
 def _clean_cuisine_label(raw):
     if not raw:
         return "General Dining"
@@ -228,9 +224,14 @@ def _resolve_cuisine_label(cuisine_label, searched_cuisine):
 
 # Tried strictest first -- a dense, popular area may have 20+ places at 4.8,
 # but most area/cuisine combos won't, so this usually cascades down. Each
-# step is just one extra Places API call (network-bound, a second or so),
-# not another pass through the NLP pipeline, so trying several is cheap.
-RATING_CASCADE = [5.0, 4.9, 4.8, 4.5, 4.0, 3.5, None]
+# step is one extra sequential Places API call, so this list is a direct
+# latency-vs-coverage tradeoff, not free: a 5.0 tier was tried here briefly,
+# but a real average of exactly 5.0 across the 20+ reviews needed to clear
+# top_n is essentially never real data -- it added a whole extra round trip
+# to every single search for ~0% success rate, and was dropped for that
+# reason. 4.9 is kept for the rare hyper-premium cluster (e.g. a
+# Downtown/Marina fine-dining pocket) that might still clear it.
+RATING_CASCADE = [4.9, 4.8, 4.5, 4.0, 3.5, None]
 
 
 def _fetch_best_rated_places(query_string, max_pages, top_n):
@@ -246,10 +247,12 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=2
     if not area or not area.strip():
         raise ValueError("area is required (e.g. 'Dubai Marina').")
 
-    if not is_recognized_dubai_area(area):
+    area_suggestions = suggest_dubai_areas(area)
+    if not area_suggestions:
         raise ValueError(f"'{area}' doesn't look like a recognized Dubai area. Try one of the suggested areas.")
+    canonical_area = area_suggestions[0]
 
-    query_string = f"{cuisine} restaurants in {area}, Dubai".strip()
+    query_string = f"{cuisine} restaurants in {canonical_area}".strip()
     places = _fetch_best_rated_places(query_string, max_pages=max_pages, top_n=top_n)
 
     if not places:
@@ -284,7 +287,7 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=2
         # 1.5x the 75th percentile is a rough stand-in for plotting purposes.
         "PRICE_LEVEL_VERY_EXPENSIVE": {"min": q3, "max": q3 * 1.5, "label": f"AED {int(q3)}+"},
     }
-    UNKNOWN_PRICE = {"min": q2, "max": q2, "label": "N/A"}
+    UNKNOWN_PRICE = {"min": q2, "max": q2, "label": f"~AED {int(q2)} (estimated)"}
 
     # Pass 1: compute each place's price info and apply the budget filter
     # across the FULL fetched candidate pool (not just whichever page they
