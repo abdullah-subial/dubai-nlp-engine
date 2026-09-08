@@ -243,6 +243,9 @@ a{color:inherit; text-decoration:none;}
 .data-table th.sortable:hover{color:var(--maroon);}
 .data-table th.sortable.active{color:var(--maroon);}
 .data-table th.sortable:focus-visible{outline:2px solid var(--gold); outline-offset:-2px;}
+.data-table .sort-icon{display:inline-block; margin-left:5px; font-size:0.85em; opacity:0.4;}
+.data-table th.sortable:hover .sort-icon{opacity:0.75;}
+.data-table .sort-icon.active{opacity:1; color:var(--gold);}
 .data-table td{padding:12px 14px; border-bottom:1px solid var(--line-soft); white-space:nowrap;}
 .data-table tr:hover td{background:var(--cream);}
 .data-table .rname{font-weight:700; color:var(--maroon-ink); white-space:normal; min-width:160px; max-width:240px;}
@@ -765,9 +768,11 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     function th(label, key){
       if(!sortable || !key) return `<th>${label}</th>`;
       const isActive = tableSort.key === key;
-      const arrow = isActive ? (tableSort.dir === 'desc' ? ' ▼' : ' ▲') : '';
       const ariaSort = isActive ? (tableSort.dir === 'desc' ? 'descending' : 'ascending') : 'none';
-      return `<th class="sortable${isActive?' active':''}" data-sort-key="${key}" tabindex="0" role="button" aria-sort="${ariaSort}">${label}${arrow}</th>`;
+      const icon = isActive
+        ? `<span class="sort-icon active">${tableSort.dir === 'desc' ? '▼' : '▲'}</span>`
+        : `<span class="sort-icon">⇅</span>`;
+      return `<th class="sortable${isActive?' active':''}" data-sort-key="${key}" tabindex="0" role="button" aria-sort="${ariaSort}">${label}${icon}</th>`;
     }
 
     document.getElementById(targetId).innerHTML = `

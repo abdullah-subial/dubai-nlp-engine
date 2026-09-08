@@ -222,7 +222,7 @@ footer{
         <label for="areaInput">Area <span style="color:var(--gold)">*</span></label>
         <input id="areaInput" type="text" placeholder="e.g. Dubai Marina" autofocus required autocomplete="off" aria-describedby="areaError">
         <div class="suggest-list" id="areaSuggest"></div>
-        <div class="field-error" id="areaError" role="alert" hidden>Please enter an area to search.</div>
+        <div class="field-error" id="areaError" role="alert" hidden></div>
       </div>
       <div class="finder-divider"></div>
       <div class="field">
@@ -287,6 +287,11 @@ footer{
     let currentItems = [];
     let debounceTimer = null;
     let requestSeq = 0;
+    // Tracks the last value we know for certain is a live, verified
+    // suggestion (set on click/Enter-select, or via setConfirmed()) --
+    // `currentItems` alone isn't enough since it gets cleared to [] the
+    // moment a selection is made and the dropdown closes.
+    let confirmedValue = null;
 
     input.setAttribute("role", "combobox");
     input.setAttribute("aria-expanded", "false");
@@ -350,6 +355,7 @@ footer{
       if(!item) return;
       e.preventDefault();
       input.value = item.textContent;
+      confirmedValue = item.textContent;
       renderItems([]);
     });
 
@@ -365,7 +371,7 @@ footer{
         updateActive();
       } else if(e.key === "Enter"){
         const pick = activeIndex >= 0 ? currentItems[activeIndex] : currentItems[0];
-        if(pick){ e.preventDefault(); input.value = pick; renderItems([]); }
+        if(pick){ e.preventDefault(); input.value = pick; confirmedValue = pick; renderItems([]); }
       } else if(e.key === "Escape"){
         renderItems([]);
       }
@@ -374,10 +380,29 @@ footer{
     document.addEventListener("click", (e) => {
       if(!input.contains(e.target) && !list.contains(e.target)) renderItems([]);
     });
+
+    return {
+      // What we currently know for certain matches a real, live-verified
+      // suggestion -- null if the user has typed anything since.
+      getConfirmed: () => confirmedValue,
+      setConfirmed: (value) => { confirmedValue = value; },
+      // One-off lookup for exactly the given text, independent of the
+      // debounced dropdown -- used to verify a value the user typed (or a
+      // stale/URL-prefilled one) without waiting on a keystroke.
+      lookup: (q) => isStatic
+        ? Promise.resolve(q ? source.filter(o => o.toLowerCase().includes(q.toLowerCase())) : source)
+        : source(q),
+    };
   }
 
-  setupSuggest("areaInput", "areaSuggest", fetchAreaSuggestions);
+  const areaSuggestCtl = setupSuggest("areaInput", "areaSuggest", fetchAreaSuggestions);
   setupSuggest("cuisineInput", "cuisineSuggest", CUISINE_OPTIONS);
+
+  // A prefilled value (arriving via the results page's "Edit" link) was
+  // already a valid, previously-searched Dubai area -- treat it as
+  // pre-confirmed so re-submitting without touching the field doesn't pay
+  // for a fresh verification lookup.
+  if(initParams.get("area")) areaSuggestCtl.setConfirmed(initParams.get("area"));
 
   function resetSubmitButton(){
     btn.classList.remove("is-loading");
@@ -399,26 +424,58 @@ footer{
     areaErrorEl.hidden = true;
   }
 
+  function showAreaError(message){
+    resetSubmitButton();
+    areaField.classList.add("has-error");
+    areaErrorEl.textContent = message;
+    areaErrorEl.hidden = false;
+    areaInputEl.focus();
+  }
+
   areaInputEl.addEventListener("input", clearAreaError);
 
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const area = document.getElementById("areaInput").value.trim();
-    if(!area){
-      areaField.classList.add("has-error");
-      areaErrorEl.hidden = false;
-      areaInputEl.focus();
-      return;
-    }
+  function goToResults(area){
     clearAreaError();
-    btn.classList.add("is-loading");
-    label.textContent = "Searching…";
     const cuisine = document.getElementById("cuisineInput").value.trim();
     const budget = document.getElementById("budgetInput").value.trim();
     const params = new URLSearchParams({ area });
     if(cuisine) params.set("cuisine", cuisine);
     if(budget) params.set("budget", budget);
     window.location.href = `/results?${params.toString()}`;
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const area = areaInputEl.value.trim();
+    if(!area){
+      showAreaError("Please enter an area to search.");
+      return;
+    }
+
+    // Only an exact, live-verified suggestion is allowed through -- typing
+    // free text (a typo, a made-up place, an area outside Dubai) and
+    // hitting submit without picking from the dropdown must not reach the
+    // backend as-is. If what's typed doesn't already match a suggestion we
+    // know is good, do one fresh check against exactly that text before
+    // deciding: snap to the top match if there is one, otherwise block.
+    if(areaSuggestCtl.getConfirmed() === area){
+      btn.classList.add("is-loading");
+      label.textContent = "Searching…";
+      goToResults(area);
+      return;
+    }
+
+    btn.classList.add("is-loading");
+    label.textContent = "Checking…";
+    areaSuggestCtl.lookup(area).then(items => {
+      if(items.length){
+        areaSuggestCtl.setConfirmed(items[0]);
+        label.textContent = "Searching…";
+        goToResults(items[0]);
+      } else {
+        showAreaError(`'${area}' doesn't look like a recognized Dubai area. Please pick one from the suggestions.`);
+      }
+    });
   });
 })();
 </script>

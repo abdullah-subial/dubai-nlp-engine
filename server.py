@@ -163,15 +163,22 @@ DUBAI_BOUNDS = {
     "high": {"latitude": 25.40, "longitude": 55.60},
 }
 
+# The six other emirates -- a suggestion naming one of these is rejected
+# even if it falls inside DUBAI_BOUNDS (the box isn't a perfect fit to
+# Dubai's actual irregular border).
+OTHER_EMIRATES = [
+    "abu dhabi", "sharjah", "ajman", "umm al quwain", "ras al khaimah", "fujairah",
+]
+
 
 def suggest_dubai_areas(query):
     """Live-typeahead area suggestions restricted to Dubai localities, via
     Google's Places Autocomplete (New) API. This product only covers Dubai,
     not the other emirates -- so results are geographically restricted to
-    Dubai's bounding box AND required to literally mention "Dubai" in the
-    returned text, since a geographic box alone can still surface a place
-    just across the border in a neighboring emirate. Never raises -- a
-    request failure or unexpected response shape just yields no suggestions.
+    Dubai's bounding box AND rejected if they name one of the other six
+    emirates, since the box alone can still surface a place just across the
+    border. Never raises -- a request failure or unexpected response shape
+    just yields no suggestions.
     """
     if not query or not query.strip():
         return []
@@ -193,7 +200,7 @@ def suggest_dubai_areas(query):
     suggestions = []
     for item in data.get("suggestions", []):
         text = item.get("placePrediction", {}).get("text", {}).get("text")
-        if text and "dubai" in text.lower():
+        if text and not any(emirate in text.lower() for emirate in OTHER_EMIRATES):
             suggestions.append(text)
     return suggestions
 
@@ -247,12 +254,7 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=2
     if not area or not area.strip():
         raise ValueError("area is required (e.g. 'Dubai Marina').")
 
-    area_suggestions = suggest_dubai_areas(area)
-    if not area_suggestions:
-        raise ValueError(f"'{area}' doesn't look like a recognized Dubai area. Try one of the suggested areas.")
-    canonical_area = area_suggestions[0]
-
-    query_string = f"{cuisine} restaurants in {canonical_area}".strip()
+    query_string = f"{cuisine} restaurants in {area}".strip()
     places = _fetch_best_rated_places(query_string, max_pages=max_pages, top_n=top_n)
 
     if not places:
@@ -287,7 +289,7 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=2
         # 1.5x the 75th percentile is a rough stand-in for plotting purposes.
         "PRICE_LEVEL_VERY_EXPENSIVE": {"min": q3, "max": q3 * 1.5, "label": f"AED {int(q3)}+"},
     }
-    UNKNOWN_PRICE = {"min": q2, "max": q2, "label": f"~AED {int(q2)} (estimated)"}
+    UNKNOWN_PRICE = {"min": q2, "max": q2, "label": f"AED {int(q2)}"}
 
     # Pass 1: compute each place's price info and apply the budget filter
     # across the FULL fetched candidate pool (not just whichever page they
