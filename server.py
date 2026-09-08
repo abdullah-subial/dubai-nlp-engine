@@ -553,7 +553,21 @@ def compute_advanced_metrics(df_reviews, df_aspects=None):
     return venues.sort_values(by="model_score", ascending=False).reset_index(drop=True)
 
 
+# What the seed verbs below expand to, captured from a working WordNet
+# corpus. The seeds and their sense indices are fixed, so this set is
+# deterministic -- which makes it a safe fallback for when the corpus can't
+# be loaded at all (a fresh machine, no network, or macOS shipping Python
+# without CA certificates). Previously each seed fell back to just itself,
+# so the set quietly collapsed from 7 verbs to 3 with nothing in the logs
+# to say so -- and losing "try" measurably hurts dish extraction, since
+# reviews say "we tried the lamb ouzi" far more often than "we tasted" it.
+CONSUMPTION_VERB_FALLBACK = {
+    "order", "sample", "taste", "try", "advocate", "recommend", "urge",
+}
+
+
 def _wordnet_verb_synonyms(seed_verb, sense_index):
+    """Synonyms for one sense of a seed verb, or None if WordNet is unusable."""
     try:
         from nltk.corpus import wordnet as wn
         try:
@@ -565,14 +579,22 @@ def _wordnet_verb_synonyms(seed_verb, sense_index):
             return {lemma.split("_")[0].lower() for lemma in synsets[sense_index].lemma_names()}
     except Exception:
         pass
-    return {seed_verb}
+    return None
 
 
-CONSUMPTION_VERBS = (
-    _wordnet_verb_synonyms("order", 1)
-    | _wordnet_verb_synonyms("taste", 2)
-    | _wordnet_verb_synonyms("recommend", 0)
-)
+def _build_consumption_verbs():
+    expanded = [
+        _wordnet_verb_synonyms("order", 1),
+        _wordnet_verb_synonyms("taste", 2),
+        _wordnet_verb_synonyms("recommend", 0),
+    ]
+    if any(group is None for group in expanded):
+        print("[wordnet] corpus unavailable -- using the stored consumption-verb set")
+        return set(CONSUMPTION_VERB_FALLBACK)
+    return set().union(*expanded)
+
+
+CONSUMPTION_VERBS = _build_consumption_verbs()
 NON_FOOD_ENTITY_LABELS = {"GPE", "LOC", "ORG", "PERSON", "NORP", "FAC"}
 GENERIC_FALLBACK_WORDS = {
     "place", "restaurant", "experience", "food", "menu", "price", "view",
