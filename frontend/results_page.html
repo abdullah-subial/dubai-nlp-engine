@@ -251,6 +251,8 @@ a{color:inherit; text-decoration:none;}
 .data-table .rname{font-weight:700; color:var(--maroon-ink); white-space:normal; min-width:160px; max-width:240px;}
 .data-table .num{font-variant-numeric:tabular-nums; font-weight:600;}
 .data-table .addr{max-width:260px;}
+.est-mark{color:var(--gold); font-weight:800; margin-left:2px;}
+.table-note{font-size:0.78rem; color:var(--muted); line-height:1.5; margin-top:14px;}
 .data-table .addr-inner{display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:help;}
 
 /* Custom address tooltip -- fixed-positioned and appended to <body>, so it
@@ -399,6 +401,13 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     // nodes) -- escape those too so this is also safe inside an attribute,
     // e.g. an address containing a quoted building name in a title="".
     return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // Anything Google didn't publish an actual menu price for -- we fall back
+  // to prices typical for the area, and mark those so the number isn't read
+  // as something the restaurant itself stated.
+  function isEstimatedPrice(r){
+    return !!r.price_source && r.price_source !== 'Verified Google Price';
   }
 
   // Custom address tooltip, delegated at the document level so it works for
@@ -761,7 +770,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
         <td class="num">${r.avg_google_rating}★</td>
         <td class="num">${r.total_google_ratings.toLocaleString()}</td>
         <td class="num">${r.positive_sentiment_pct}%</td>
-        <td>${escapeHtml(r.price_range)}</td>
+        <td>${escapeHtml(r.price_range)}${isEstimatedPrice(r) ? '<span class="est-mark">*</span>' : ''}</td>
         <td class="addr"><span class="addr-inner" tabindex="0" data-full="${escapeHtml(r.address||'')}">${escapeHtml(r.address||'')}</span></td>
       </tr>`).join('');
 
@@ -769,9 +778,12 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
       if(!sortable || !key) return `<th>${label}</th>`;
       const isActive = tableSort.key === key;
       const ariaSort = isActive ? (tableSort.dir === 'desc' ? 'descending' : 'ascending') : 'none';
+      // Same glyph whether active or not -- an inactive column differs only
+      // in colour/opacity, so every sortable header reads as one family
+      // instead of a mismatched ⇅ sitting next to the active triangle.
       const icon = isActive
         ? `<span class="sort-icon active">${tableSort.dir === 'desc' ? '▼' : '▲'}</span>`
-        : `<span class="sort-icon">⇅</span>`;
+        : `<span class="sort-icon">▼</span>`;
       return `<th class="sortable${isActive?' active':''}" data-sort-key="${key}" tabindex="0" role="button" aria-sort="${ariaSort}">${label}${icon}</th>`;
     }
 
@@ -850,6 +862,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
       <div class="chart-card" style="margin-top:22px;">
         <div class="chart-card-head"><div class="chart-title">Restaurants Performance Overview</div><div class="chart-sub">Every metric behind the ranking, for every spot analyzed — click a column header to sort</div></div>
         <div class="table-scroll"><table class="data-table" id="dataTable"></table></div>
+        ${results.some(isEstimatedPrice) ? `<div class="table-note"><span class="est-mark">*</span> Price estimated from what comparable venues nearby charge — this restaurant hasn't published its own prices on Google.</div>` : ''}
       </div>`;
     renderCharts(results, showCuisineChart, bestValue);
     renderDataTable(results, 'dataTable', true);

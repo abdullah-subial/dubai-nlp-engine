@@ -692,6 +692,7 @@ def _build_scorecard_row(place_id, group, model_score):
     price_numeric = group["price_numeric"].iloc[0] if "price_numeric" in group.columns else None
     price_numeric_max = group["price_numeric_max"].iloc[0] if "price_numeric_max" in group.columns else price_numeric
     address = group["formatted_address"].iloc[0] if "formatted_address" in group.columns else None
+    price_source = group["price_source"].iloc[0] if "price_source" in group.columns else None
 
     pos_texts = group[group["sentiment_label"] == "POSITIVE"]["review_text"].tolist()
     famous_dish, vibe_check, vibe_word_frequencies = extract_dish_and_vibe(pos_texts if pos_texts else group["review_text"].tolist())
@@ -716,6 +717,7 @@ def _build_scorecard_row(place_id, group, model_score):
         "price_range": price_range,
         "price_numeric": price_numeric,
         "price_numeric_max": price_numeric_max,
+        "price_source": price_source,
         "address": address,
         "avg_google_rating": avg_rating,
         "total_google_ratings": user_rating_count,
