@@ -171,22 +171,32 @@ OTHER_EMIRATES = [
 ]
 
 
-def suggest_dubai_areas(query):
-    """Live-typeahead area suggestions restricted to Dubai localities, via
-    Google's Places Autocomplete (New) API. This product only covers Dubai,
-    not the other emirates -- so results are geographically restricted to
-    Dubai's bounding box AND rejected if they name one of the other six
-    emirates, since the box alone can still surface a place just across the
-    border. Never raises -- a request failure or unexpected response shape
-    just yields no suggestions.
+# The typeahead fires on nearly every keystroke, and typing/backspacing
+# revisits the same prefixes constantly -- serving those from memory keeps
+# the dropdown instant instead of paying a Google round trip each time.
+_area_suggest_cache = {}
+_AREA_SUGGEST_TTL = 30 * 60
+
+
+def _autocomplete_dubai(query):
+    """One Dubai-scoped Places Autocomplete (New) call, cached. Never raises
+    -- a request failure or unexpected response shape yields no suggestions.
+
+    Deliberately does NOT filter by place type. Restricting to
+    locality/sublocality/neighborhood dropped real Dubai communities:
+    a developer-built residential area like Azizi Riviera isn't typed as
+    any of those, so it never surfaced. Dubai-scoping is left to the
+    geographic box plus the other-emirate check below.
     """
-    if not query or not query.strip():
-        return []
+    cache_key = query.lower()
+    cached = _area_suggest_cache.get(cache_key)
+    if cached and cached[1] > time.time():
+        return cached[0]
+
     headers = {"Content-Type": "application/json", "X-Goog-Api-Key": API_KEY}
     payload = {
-        "input": query.strip(),
+        "input": query,
         "includedRegionCodes": ["ae"],
-        "includedPrimaryTypes": ["locality", "sublocality", "neighborhood"],
         "locationRestriction": {"rectangle": DUBAI_BOUNDS},
     }
     try:
@@ -202,7 +212,27 @@ def suggest_dubai_areas(query):
         text = item.get("placePrediction", {}).get("text", {}).get("text")
         if text and not any(emirate in text.lower() for emirate in OTHER_EMIRATES):
             suggestions.append(text)
+    _area_suggest_cache[cache_key] = (suggestions, time.time() + _AREA_SUGGEST_TTL)
     return suggestions
+
+
+def suggest_dubai_areas(query):
+    """Dubai-only typeahead suggestions for a partially typed area.
+
+    When the full text matches nothing, drops a character at a time and
+    retries, so a typo or an out-of-scope place ("lahore") still comes back
+    with the nearest Dubai areas to pick from rather than an empty dropdown
+    and a dead end.
+    """
+    if not query or not query.strip():
+        return []
+    cleaned = query.strip()
+    while len(cleaned) >= 2:
+        matches = _autocomplete_dubai(cleaned)
+        if matches:
+            return matches
+        cleaned = cleaned[:-1]
+    return []
 
 
 def _clean_cuisine_label(raw):
@@ -900,7 +930,10 @@ def _prewarm_cache_loop():
         time.sleep(refresh_interval)
 
 
-threading.Thread(target=_prewarm_cache_loop, daemon=True).start()
+if os.environ.get("PREWARM_CACHE", "").lower() in ("1", "true", "yes"):
+    threading.Thread(target=_prewarm_cache_loop, daemon=True).start()
+else:
+    print("[prewarm] disabled -- set PREWARM_CACHE=1 to warm popular areas in the background")
 
 
 # ==========================================

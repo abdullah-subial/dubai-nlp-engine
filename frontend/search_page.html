@@ -346,7 +346,7 @@ footer{
     input.addEventListener("input", () => {
       clearTimeout(debounceTimer);
       if(isStatic){ fetchAndRender(); return; }
-      debounceTimer = setTimeout(fetchAndRender, 280);
+      debounceTimer = setTimeout(fetchAndRender, 150);
     });
     input.addEventListener("focus", fetchAndRender);
 
@@ -386,6 +386,7 @@ footer{
       // suggestion -- null if the user has typed anything since.
       getConfirmed: () => confirmedValue,
       setConfirmed: (value) => { confirmedValue = value; },
+      showItems: (items) => renderItems(items),
       // One-off lookup for exactly the given text, independent of the
       // debounced dropdown -- used to verify a value the user typed (or a
       // stale/URL-prefilled one) without waiting on a keystroke.
@@ -424,12 +425,14 @@ footer{
     areaErrorEl.hidden = true;
   }
 
-  function showAreaError(message){
+  function showAreaError(message, refocus){
     resetSubmitButton();
     areaField.classList.add("has-error");
     areaErrorEl.textContent = message;
     areaErrorEl.hidden = false;
-    areaInputEl.focus();
+    // Skipped when we're about to open the dropdown -- refocusing fires the
+    // focus handler, which would re-render the list underneath us.
+    if(refocus !== false) areaInputEl.focus();
   }
 
   areaInputEl.addEventListener("input", clearAreaError);
@@ -452,12 +455,9 @@ footer{
       return;
     }
 
-    // Only an exact, live-verified suggestion is allowed through -- typing
-    // free text (a typo, a made-up place, an area outside Dubai) and
-    // hitting submit without picking from the dropdown must not reach the
-    // backend as-is. If what's typed doesn't already match a suggestion we
-    // know is good, do one fresh check against exactly that text before
-    // deciding: snap to the top match if there is one, otherwise block.
+    // Only an exact, live-verified suggestion is allowed through, so free
+    // text (a typo, a made-up place, somewhere outside Dubai) can't reach
+    // the backend as-is.
     if(areaSuggestCtl.getConfirmed() === area){
       btn.classList.add("is-loading");
       label.textContent = "Searching…";
@@ -465,15 +465,17 @@ footer{
       return;
     }
 
+    // Never guess on the user's behalf here -- silently searching the
+    // closest match is how "mirdiff" quietly became Dubai Mall results.
+    // Show the nearest Dubai areas and let them choose.
     btn.classList.add("is-loading");
     label.textContent = "Checking…";
     areaSuggestCtl.lookup(area).then(items => {
       if(items.length){
-        areaSuggestCtl.setConfirmed(items[0]);
-        label.textContent = "Searching…";
-        goToResults(items[0]);
+        showAreaError("Pick one of the suggested Dubai areas below.", false);
+        areaSuggestCtl.showItems(items);
       } else {
-        showAreaError(`'${area}' doesn't look like a recognized Dubai area. Please pick one from the suggestions.`);
+        showAreaError(`'${area}' doesn't match any Dubai area. Try a nearby neighbourhood.`);
       }
     });
   });
