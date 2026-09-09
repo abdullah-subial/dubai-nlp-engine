@@ -1,28 +1,9 @@
-# Pinned so the Docker image and a local venv resolve to the same versions.
-# An unpinned ML stack is how "works on my machine, breaks in the image"
-# happens: torch and transformers in particular change behaviour across
-# releases, and an unpinned build silently picks up whatever shipped that day.
-#
-# These pins were resolved against Python 3.11 (the image's interpreter).
-# Your local venv is the set that has actually been QA'd, so if it differs,
-# regenerate from it -- see DEPLOY.md, step 1.
-
 fastapi==0.141.1
-uvicorn[standard]==0.52.4
-
-pandas==3.0.5
-numpy==2.4.6
-requests==2.33.1
-
-# Kept on the 4.x line. 5.x is a major release this code hasn't been run
-# against -- worth moving to deliberately, not by accident.
-transformers==4.57.6
-spacy==3.8.16
 nltk==3.10.3
-
-# Intentionally unpinned: the CPU wheel index was unreachable from the machine
-# these pins were resolved on, so pinning a version here risked naming one that
-# doesn't exist on it. Pin it after your first successful build -- the exact
-# version is in `pip freeze` on your Mac, and the Dockerfile reads whatever
-# spec appears on this line.
-torch
+numpy==2.5.2
+pandas==3.0.5
+requests==2.34.2
+spacy==3.8.16
+torch==2.13.0
+transformers==5.16.1
+uvicorn==0.52.4
