@@ -1,3 +1,7 @@
+# Pinned from the venv the app was QA'd in.
+# The Docker image installs torch from PyTorch's CPU-only wheel index -- see
+# the Dockerfile, which reads the version off the torch line below.
+
 fastapi==0.141.1
 nltk==3.10.3
 numpy==2.5.2
@@ -6,4 +10,6 @@ requests==2.34.2
 spacy==3.8.16
 torch==2.13.0
 transformers==5.16.1
-uvicorn==0.52.4
+# [standard] pulls in uvloop, httptools and watchfiles. Without the extras
+# uvicorn still runs, but it's slower and --reload stops working locally.
+uvicorn[standard]==0.52.4
