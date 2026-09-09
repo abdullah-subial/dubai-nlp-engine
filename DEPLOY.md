@@ -72,7 +72,7 @@ check that `HF_HOME` is the same at build and run time.
 | `GOOGLE_PLACES_API_KEY` | **Yes** — the app refuses to start without it | Places Text Search + Autocomplete |
 | `HF_TOKEN` | No | Avoids Hugging Face rate limits. Models are baked in, so this matters less in the image than locally |
 | `PORT` | No (defaults to 7860) | Most hosts inject this automatically |
-| `DAILY_SEARCH_CAP` | No (defaults 300) | Searches per day across all visitors before the app stops calling Google. Cache hits don't count |
+| `DAILY_SEARCH_CAP` | No (defaults 1000) | Searches per day across all visitors before the app stops calling Google. Cache hits don't count |
 | `SEARCH_PER_HOUR` | No (defaults 12) | Searches per visitor per hour |
 | `SUGGEST_PER_MINUTE` | No (defaults 60) | Area-typeahead calls per visitor per minute |
 | `PREWARM_CACHE` | No (defaults off) | **Set to `1` in production.** Warms popular areas in the background so a demo link returns instantly. It's off by default because it saturates a laptop's CPU — on a deployed box with idle capacity it's exactly what you want |

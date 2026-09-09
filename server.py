@@ -77,7 +77,7 @@ RATE_LIMITS = {
     "suggest": (int(os.environ.get("SUGGEST_PER_MINUTE", "60")), 60),
     "search": (int(os.environ.get("SEARCH_PER_HOUR", "12")), 3600),
 }
-DAILY_SEARCH_CAP = int(os.environ.get("DAILY_SEARCH_CAP", "300"))
+DAILY_SEARCH_CAP = int(os.environ.get("DAILY_SEARCH_CAP", "1000"))
 
 _rate_hits = defaultdict(list)
 _rate_lock = threading.Lock()
