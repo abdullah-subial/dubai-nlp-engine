@@ -1,4 +1,9 @@
 <title>Your Table Awaits</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Without this, browsers that force-darken pages invert the whole palette.
+     Charts are the worst of it: Chart.js draws to <canvas>, which force-dark
+     can't invert, so dark axis labels ended up on an inverted dark card. -->
+<meta name="color-scheme" content="light">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%BD%EF%B8%8F%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,6 +25,7 @@
   --shadow: 0 20px 50px -20px rgba(74,18,38,0.25);
   --maxw: 1440px;
 }
+:root{color-scheme:light;}
 *{box-sizing:border-box;}
 body{
   margin:0;
@@ -84,12 +90,12 @@ a{color:inherit; text-decoration:none;}
 .page-title{padding:32px 0 4px;}
 .page-title h1{
   font-family:'Fraunces',serif; font-style:italic; font-weight:500;
-  font-size:clamp(1.8rem,3vw,2.4rem); color:var(--maroon-ink); line-height:1.1;
+  font-size:clamp(1.5rem,2.2vw,1.95rem); color:var(--maroon-ink); line-height:1.15;
 }
 .page-title p{color:var(--muted); font-size:0.95rem; margin-top:6px;}
 .page-title p b{color:var(--maroon);}
 
-.section{padding:24px 0;}
+.section{padding:18px 0;}
 .section:empty{padding:0;}
 
 /* Shared header format -- every section title matches the Top Pick heading */
@@ -100,7 +106,7 @@ a{color:inherit; text-decoration:none;}
 .section-heading .spark{color:var(--gold); font-size:1.4rem;}
 .section-heading h2{
   font-family:'Fraunces',serif; font-style:italic; font-weight:500;
-  font-size:clamp(2rem,3.4vw,2.7rem); color:var(--maroon-ink); line-height:1;
+  font-size:clamp(1.45rem,2.3vw,1.95rem); color:var(--maroon-ink); line-height:1.05;
 }
 .section-heading::after{content:''; flex:1; height:1px; background:var(--line);}
 .section-heading.no-line::after{content:none;}
@@ -118,11 +124,11 @@ a{color:inherit; text-decoration:none;}
 }
 .stat:hover{transform:translateY(-4px); box-shadow:0 22px 40px -20px rgba(74,18,38,0.4); border-color:var(--gold-soft);}
 .stat-band{height:10px;}
-.stat-body{padding:22px 24px 26px; display:flex; flex-direction:column; gap:10px;}
+.stat-body{padding:16px 18px 18px; display:flex; flex-direction:column; gap:6px;}
 .stats.opt-gold .stat-band{background:linear-gradient(120deg, #d98e28, #b5701a 60%, #f0c987);}
 .stat-num{
   font-family:'Plus Jakarta Sans',sans-serif; font-weight:800;
-  font-size:clamp(2.6rem,3.4vw,3.35rem);
+  font-size:clamp(1.9rem,2.5vw,2.5rem);
   color:var(--maroon-ink); letter-spacing:-0.02em; line-height:1;
 }
 .stat-num .unit{font-size:0.58em; font-weight:700; color:var(--gold); margin-left:5px; vertical-align:middle;}
@@ -138,7 +144,7 @@ a{color:inherit; text-decoration:none;}
   overflow:hidden; position:relative;
 }
 .spotlight::before{content:''; position:absolute; inset:0 0 auto 0; height:6px; background:linear-gradient(90deg, var(--gold), var(--maroon) 55%, var(--gold-soft));}
-.spotlight-inner{padding:clamp(28px,3.6vw,52px); display:grid; gap:32px;}
+.spotlight-inner{padding:clamp(20px,2.4vw,34px); display:grid; gap:24px;}
 
 .pick-identity{
   display:flex; align-items:flex-end; flex-wrap:wrap; gap:18px;
@@ -153,7 +159,7 @@ a{color:inherit; text-decoration:none;}
 }
 .pick-name{
   font-family:'Fraunces',serif; font-style:italic; font-weight:500;
-  font-size:clamp(2.4rem,4.4vw,3.6rem); color:var(--maroon-ink); line-height:1;
+  font-size:clamp(1.6rem,2.9vw,2.5rem); color:var(--maroon-ink); line-height:1.1;
 }
 .pick-address{
   display:inline-flex; align-items:center; gap:7px;
@@ -253,7 +259,7 @@ a{color:inherit; text-decoration:none;}
 .data-table .addr{max-width:260px;}
 .est-mark{color:var(--gold); font-weight:800; margin-left:2px;}
 .table-note{font-size:0.78rem; color:var(--muted); line-height:1.5; margin-top:14px;}
-.data-table .addr-inner{display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:help;}
+.data-table .addr-inner{display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:default;}
 
 /* Custom address tooltip -- fixed-positioned and appended to <body>, so it
    is never clipped by .table-scroll's overflow:auto the way a tooltip
@@ -406,6 +412,14 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
   // Anything Google didn't publish an actual menu price for -- we fall back
   // to prices typical for the area, and mark those so the number isn't read
   // as something the restaurant itself stated.
+  // Google's canonical area names carry their full context -- "Dubai Marina -
+  // Dubai - United Arab Emirates". That's what we must search with, but as a
+  // heading it wraps to three lines and buries the content below it. Show the
+  // leading segment, which is the part a reader actually needs.
+  function shortAreaName(area){
+    return String(area || '').split(/\s+[-–]\s+|,/)[0].trim() || String(area || '');
+  }
+
   function isEstimatedPrice(r){
     return !!r.price_source && r.price_source !== 'Verified Google Price';
   }
@@ -922,7 +936,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     $("#liveScorecardSection").innerHTML = '';
 
     if(!finalPayload || !results.length){
-      $("#statsSection").innerHTML = `<div class="state-msg"><div class="big">No spots found in ${escapeHtml(area)}.</div><div>Try a nearby area, or widen your budget.</div></div>`;
+      $("#statsSection").innerHTML = `<div class="state-msg"><div class="big">No spots found in ${escapeHtml(shortAreaName(area))}.</div><div>Try a nearby area, or widen your budget.</div></div>`;
       $("#transparencyNote").textContent = (finalPayload && finalPayload.summary) || "No matches for this search.";
       clearSections();
       return;
@@ -946,8 +960,8 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
   }
 
   function runSearch(area, cuisine, budget){
-    $("#pageTitle").textContent = `Spots in ${area}.`;
-    $("#querySummary").innerHTML = `Showing results for <b>${escapeHtml(area)}</b>${cuisine?` <span class="sep">·</span> <b>${escapeHtml(cuisine)}</b>`:''}${budget?` <span class="sep">·</span> <b>Under AED ${escapeHtml(budget)}</b>`:''} <span class="edit-link" id="editLink"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit</span>`;
+    $("#pageTitle").textContent = `Spots in ${shortAreaName(area)}.`;
+    $("#querySummary").innerHTML = `Showing results for <b>${escapeHtml(shortAreaName(area))}</b>${cuisine?` <span class="sep">·</span> <b>${escapeHtml(cuisine)}</b>`:''}${budget?` <span class="sep">·</span> <b>Under AED ${escapeHtml(budget)}</b>`:''} <span class="edit-link" id="editLink"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit</span>`;
     renderLoading();
 
     const params = new URLSearchParams({ area });
