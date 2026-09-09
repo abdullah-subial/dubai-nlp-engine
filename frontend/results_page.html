@@ -993,13 +993,22 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
         finalPayload = evt;
       } else if(evt.type === 'error'){
         const err = new Error(evt.message);
-        err.isSearchError = true;
+        if(evt.kind === 'limit') err.isLimit = true;
+        else err.isSearchError = true;
         throw err;
       }
     }
 
     fetch(`/api/recommend/stream?${params.toString()}`)
       .then(res => {
+        if(res.status === 429){
+          // Rate-limited or the demo's daily cap -- the body says which.
+          return res.json().catch(() => ({})).then(body => {
+            const err = new Error(body.detail || "That's a lot of searches at once. Give it a moment and try again.");
+            err.isLimit = true;
+            throw err;
+          });
+        }
         if(!res.ok || !res.body) throw new Error(`Server returned ${res.status}`);
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
@@ -1023,8 +1032,12 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
       .catch(err => {
         console.error("Failed to load recommendations:", err);
         $("#liveScorecardSection").innerHTML = '';
-        const heading = err.isSearchError ? "Couldn't search that area." : "Something went wrong.";
-        const detail = err.isSearchError ? escapeHtml(err.message) : `Could not reach the server (${escapeHtml(err.message)}). Please try again.`;
+        const heading = err.isLimit ? "Taking a breather."
+          : err.isSearchError ? "Couldn't search that area."
+          : "Something went wrong.";
+        const detail = (err.isLimit || err.isSearchError)
+          ? escapeHtml(err.message)
+          : `Could not reach the server (${escapeHtml(err.message)}). Please try again.`;
         $("#statsSection").innerHTML = `<div class="state-msg"><div class="big">${heading}</div><div>${detail}</div></div>`;
         $("#transparencyNote").textContent = "Search failed.";
         clearSections();
