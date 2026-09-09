@@ -34,6 +34,15 @@ RUN TORCH_SPEC="$(grep -iE '^torch([=<>!~]|$)' requirements.txt || echo torch)" 
  && pip install --no-cache-dir "$TORCH_SPEC" --index-url https://download.pytorch.org/whl/cpu \
  && pip install --no-cache-dir -r requirements.txt
 
+# The spaCy model, installed straight from its release wheel rather than via
+# `spacy download`. That command resolves the model version by calling spaCy's
+# compatibility service at build time -- a live third-party dependency that has
+# already broken a build here with a 503. Pinning the wheel makes the build
+# deterministic and removes the outage as a failure mode. 3.8.0 is the version
+# spaCy's own compatibility table pairs with the 3.8.x pinned in requirements.txt.
+RUN pip install --no-cache-dir \
+    https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+
 # --- Models -----------------------------------------------------------------
 # Baked in so cold starts are fast and offline. Its own layer, after deps and
 # before app code, because it is the slowest step and the least likely to change.
