@@ -38,9 +38,19 @@ def _assert_in_sync_with_server():
 def main():
     _assert_in_sync_with_server()
 
+    # In the image the model is already pip-installed from a pinned wheel (see
+    # Dockerfile), so this just confirms it loads. `spacy download` is only the
+    # fallback for running this script outside Docker -- it resolves the model
+    # version by calling spaCy's compatibility service, which is a live
+    # third-party dependency that has already failed a build here with a 503.
     print(f"[prefetch] spaCy: {SPACY_MODEL}")
-    from spacy.cli import download as spacy_download
-    spacy_download(SPACY_MODEL)
+    import spacy
+    try:
+        spacy.load(SPACY_MODEL)
+        print(f"[prefetch] {SPACY_MODEL} already present")
+    except OSError:
+        from spacy.cli import download as spacy_download
+        spacy_download(SPACY_MODEL)
 
     print(f"[prefetch] sentiment: {SENTIMENT_MODEL}")
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
