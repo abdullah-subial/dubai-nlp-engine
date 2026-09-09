@@ -1,10 +1,11 @@
 # Dine Dubai -- single-process FastAPI app serving both pages and the API.
 #
-# Python 3.11 rather than the 3.13 used for local dev: it has the widest wheel
-# coverage across torch/spaCy/transformers, so the build never falls back to
-# compiling from source. Pin the same versions in requirements.txt and the two
-# environments stay equivalent.
-FROM python:3.11-slim
+# Matches the Python the app is developed and QA'd on. This was briefly 3.11,
+# on the theory that an older interpreter has broader wheel coverage -- but the
+# pinned versions come from a 3.13 venv, and some of them (numpy 2.5.x) require
+# 3.12+, so 3.11 couldn't install them. Pinning versions from one interpreter
+# and building on another defeats the point of pinning; keep these in step.
+FROM python:3.13-slim
 
 # PYTHONUNBUFFERED: startup logs ([prewarm], [wordnet], [startup]) reach the
 #   platform's log viewer immediately instead of sitting in a buffer.
