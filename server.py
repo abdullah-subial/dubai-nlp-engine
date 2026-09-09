@@ -154,17 +154,50 @@ def _fetch_places_pages(query_string, max_pages=1, page_delay_seconds=2.0, min_r
     return all_places
 
 
-def suggest_dubai_areas(query):
-    """Live-typeahead area suggestions restricted to UAE localities, via
-    Google's Places Autocomplete (New) API. Never raises -- a request
-    failure or unexpected response shape just yields no suggestions."""
-    if not query or not query.strip():
-        return []
+# Rough bounding rectangle around the Dubai emirate, used to restrict
+# area-suggest autocomplete to Dubai. Deliberately a bit generous (not a
+# tight fit) so real Dubai neighborhoods near the emirate's edges aren't
+# accidentally excluded -- the substring check below is the real filter.
+DUBAI_BOUNDS = {
+    "low": {"latitude": 24.70, "longitude": 54.85},
+    "high": {"latitude": 25.40, "longitude": 55.60},
+}
+
+# The six other emirates -- a suggestion naming one of these is rejected
+# even if it falls inside DUBAI_BOUNDS (the box isn't a perfect fit to
+# Dubai's actual irregular border).
+OTHER_EMIRATES = [
+    "abu dhabi", "sharjah", "ajman", "umm al quwain", "ras al khaimah", "fujairah",
+]
+
+
+# The typeahead fires on nearly every keystroke, and typing/backspacing
+# revisits the same prefixes constantly -- serving those from memory keeps
+# the dropdown instant instead of paying a Google round trip each time.
+_area_suggest_cache = {}
+_AREA_SUGGEST_TTL = 30 * 60
+
+
+def _autocomplete_dubai(query):
+    """One Dubai-scoped Places Autocomplete (New) call, cached. Never raises
+    -- a request failure or unexpected response shape yields no suggestions.
+
+    Deliberately does NOT filter by place type. Restricting to
+    locality/sublocality/neighborhood dropped real Dubai communities:
+    a developer-built residential area like Azizi Riviera isn't typed as
+    any of those, so it never surfaced. Dubai-scoping is left to the
+    geographic box plus the other-emirate check below.
+    """
+    cache_key = query.lower()
+    cached = _area_suggest_cache.get(cache_key)
+    if cached and cached[1] > time.time():
+        return cached[0]
+
     headers = {"Content-Type": "application/json", "X-Goog-Api-Key": API_KEY}
     payload = {
-        "input": query.strip(),
+        "input": query,
         "includedRegionCodes": ["ae"],
-        "includedPrimaryTypes": ["locality", "sublocality", "neighborhood"],
+        "locationRestriction": {"rectangle": DUBAI_BOUNDS},
     }
     try:
         response = requests.post(PLACES_AUTOCOMPLETE_URL, headers=headers, json=payload, timeout=10)
@@ -177,13 +210,29 @@ def suggest_dubai_areas(query):
     suggestions = []
     for item in data.get("suggestions", []):
         text = item.get("placePrediction", {}).get("text", {}).get("text")
-        if text:
+        if text and not any(emirate in text.lower() for emirate in OTHER_EMIRATES):
             suggestions.append(text)
+    _area_suggest_cache[cache_key] = (suggestions, time.time() + _AREA_SUGGEST_TTL)
     return suggestions
 
 
-def is_recognized_dubai_area(area):
-    return bool(area and area.strip() and suggest_dubai_areas(area))
+def suggest_dubai_areas(query):
+    """Dubai-only typeahead suggestions for a partially typed area.
+
+    When the full text matches nothing, drops a character at a time and
+    retries, so a typo or an out-of-scope place ("lahore") still comes back
+    with the nearest Dubai areas to pick from rather than an empty dropdown
+    and a dead end.
+    """
+    if not query or not query.strip():
+        return []
+    cleaned = query.strip()
+    while len(cleaned) >= 2:
+        matches = _autocomplete_dubai(cleaned)
+        if matches:
+            return matches
+        cleaned = cleaned[:-1]
+    return []
 
 
 def _clean_cuisine_label(raw):
@@ -212,9 +261,14 @@ def _resolve_cuisine_label(cuisine_label, searched_cuisine):
 
 # Tried strictest first -- a dense, popular area may have 20+ places at 4.8,
 # but most area/cuisine combos won't, so this usually cascades down. Each
-# step is just one extra Places API call (network-bound, a second or so),
-# not another pass through the NLP pipeline, so trying several is cheap.
-RATING_CASCADE = [5.0, 4.9, 4.8, 4.5, 4.0, 3.5, None]
+# step is one extra sequential Places API call, so this list is a direct
+# latency-vs-coverage tradeoff, not free: a 5.0 tier was tried here briefly,
+# but a real average of exactly 5.0 across the 20+ reviews needed to clear
+# top_n is essentially never real data -- it added a whole extra round trip
+# to every single search for ~0% success rate, and was dropped for that
+# reason. 4.9 is kept for the rare hyper-premium cluster (e.g. a
+# Downtown/Marina fine-dining pocket) that might still clear it.
+RATING_CASCADE = [4.9, 4.8, 4.5, 4.0, 3.5, None]
 
 
 def _fetch_best_rated_places(query_string, max_pages, top_n):
@@ -230,10 +284,7 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=2
     if not area or not area.strip():
         raise ValueError("area is required (e.g. 'Dubai Marina').")
 
-    if not is_recognized_dubai_area(area):
-        raise ValueError(f"'{area}' doesn't look like a recognized Dubai area. Try one of the suggested areas.")
-
-    query_string = f"{cuisine} restaurants in {area}, Dubai".strip()
+    query_string = f"{cuisine} restaurants in {area}".strip()
     places = _fetch_best_rated_places(query_string, max_pages=max_pages, top_n=top_n)
 
     if not places:
@@ -268,7 +319,7 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=2
         # 1.5x the 75th percentile is a rough stand-in for plotting purposes.
         "PRICE_LEVEL_VERY_EXPENSIVE": {"min": q3, "max": q3 * 1.5, "label": f"AED {int(q3)}+"},
     }
-    UNKNOWN_PRICE = {"min": q2, "max": q2, "label": "N/A"}
+    UNKNOWN_PRICE = {"min": q2, "max": q2, "label": f"AED {int(q2)}"}
 
     # Pass 1: compute each place's price info and apply the budget filter
     # across the FULL fetched candidate pool (not just whichever page they
@@ -385,8 +436,8 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=2
         "total_reviews": len(df_reviews),
         "exact_price_count": exact_price_count,
         "estimated_price_count": estimated_price_count,
-        "transparency_note": f"Found {len(places)} restaurants in the area. Analyzed the top {venue_count} by Google "
-                             f"rating — {venue_count} venue{'s' if venue_count != 1 else ''} across {len(df_reviews)} reviews. "
+        "transparency_note": f"Found {len(places)} restaurants in the area. Analyzed the top "
+                             f"{venue_count} venue{'s' if venue_count != 1 else ''} by Google rating, across {len(df_reviews)} reviews. "
                              f"{exact_price_count} using direct menu prices, "
                              f"{estimated_price_count} estimated via local area quartiles.",
     }])
@@ -502,7 +553,21 @@ def compute_advanced_metrics(df_reviews, df_aspects=None):
     return venues.sort_values(by="model_score", ascending=False).reset_index(drop=True)
 
 
+# What the seed verbs below expand to, captured from a working WordNet
+# corpus. The seeds and their sense indices are fixed, so this set is
+# deterministic -- which makes it a safe fallback for when the corpus can't
+# be loaded at all (a fresh machine, no network, or macOS shipping Python
+# without CA certificates). Previously each seed fell back to just itself,
+# so the set quietly collapsed from 7 verbs to 3 with nothing in the logs
+# to say so -- and losing "try" measurably hurts dish extraction, since
+# reviews say "we tried the lamb ouzi" far more often than "we tasted" it.
+CONSUMPTION_VERB_FALLBACK = {
+    "order", "sample", "taste", "try", "advocate", "recommend", "urge",
+}
+
+
 def _wordnet_verb_synonyms(seed_verb, sense_index):
+    """Synonyms for one sense of a seed verb, or None if WordNet is unusable."""
     try:
         from nltk.corpus import wordnet as wn
         try:
@@ -514,14 +579,22 @@ def _wordnet_verb_synonyms(seed_verb, sense_index):
             return {lemma.split("_")[0].lower() for lemma in synsets[sense_index].lemma_names()}
     except Exception:
         pass
-    return {seed_verb}
+    return None
 
 
-CONSUMPTION_VERBS = (
-    _wordnet_verb_synonyms("order", 1)
-    | _wordnet_verb_synonyms("taste", 2)
-    | _wordnet_verb_synonyms("recommend", 0)
-)
+def _build_consumption_verbs():
+    expanded = [
+        _wordnet_verb_synonyms("order", 1),
+        _wordnet_verb_synonyms("taste", 2),
+        _wordnet_verb_synonyms("recommend", 0),
+    ]
+    if any(group is None for group in expanded):
+        print("[wordnet] corpus unavailable -- using the stored consumption-verb set")
+        return set(CONSUMPTION_VERB_FALLBACK)
+    return set().union(*expanded)
+
+
+CONSUMPTION_VERBS = _build_consumption_verbs()
 NON_FOOD_ENTITY_LABELS = {"GPE", "LOC", "ORG", "PERSON", "NORP", "FAC"}
 GENERIC_FALLBACK_WORDS = {
     "place", "restaurant", "experience", "food", "menu", "price", "view",
@@ -641,6 +714,7 @@ def _build_scorecard_row(place_id, group, model_score):
     price_numeric = group["price_numeric"].iloc[0] if "price_numeric" in group.columns else None
     price_numeric_max = group["price_numeric_max"].iloc[0] if "price_numeric_max" in group.columns else price_numeric
     address = group["formatted_address"].iloc[0] if "formatted_address" in group.columns else None
+    price_source = group["price_source"].iloc[0] if "price_source" in group.columns else None
 
     pos_texts = group[group["sentiment_label"] == "POSITIVE"]["review_text"].tolist()
     famous_dish, vibe_check, vibe_word_frequencies = extract_dish_and_vibe(pos_texts if pos_texts else group["review_text"].tolist())
@@ -665,6 +739,7 @@ def _build_scorecard_row(place_id, group, model_score):
         "price_range": price_range,
         "price_numeric": price_numeric,
         "price_numeric_max": price_numeric_max,
+        "price_source": price_source,
         "address": address,
         "avg_google_rating": avg_rating,
         "total_google_ratings": user_rating_count,
@@ -879,7 +954,10 @@ def _prewarm_cache_loop():
         time.sleep(refresh_interval)
 
 
-threading.Thread(target=_prewarm_cache_loop, daemon=True).start()
+if os.environ.get("PREWARM_CACHE", "").lower() in ("1", "true", "yes"):
+    threading.Thread(target=_prewarm_cache_loop, daemon=True).start()
+else:
+    print("[prewarm] disabled -- set PREWARM_CACHE=1 to warm popular areas in the background")
 
 
 # ==========================================

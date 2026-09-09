@@ -125,7 +125,7 @@ a{color:inherit; text-decoration:none;}
   font-size:clamp(2.6rem,3.4vw,3.35rem);
   color:var(--maroon-ink); letter-spacing:-0.02em; line-height:1;
 }
-.stat-num .unit{font-size:0.4em; font-weight:700; color:var(--gold); margin-left:5px; vertical-align:middle;}
+.stat-num .unit{font-size:0.58em; font-weight:700; color:var(--gold); margin-left:5px; vertical-align:middle;}
 .stat-num .currency{font-size:0.42em; font-weight:700; color:var(--gold); margin-left:6px; vertical-align:middle;}
 .stat-label{font-size:0.95rem; font-weight:600; color:var(--muted); letter-spacing:0.03em;}
 
@@ -243,12 +243,31 @@ a{color:inherit; text-decoration:none;}
 .data-table th.sortable:hover{color:var(--maroon);}
 .data-table th.sortable.active{color:var(--maroon);}
 .data-table th.sortable:focus-visible{outline:2px solid var(--gold); outline-offset:-2px;}
+.data-table .sort-icon{display:inline-block; margin-left:5px; font-size:0.85em; opacity:0.4;}
+.data-table th.sortable:hover .sort-icon{opacity:0.75;}
+.data-table .sort-icon.active{opacity:1; color:var(--gold);}
 .data-table td{padding:12px 14px; border-bottom:1px solid var(--line-soft); white-space:nowrap;}
 .data-table tr:hover td{background:var(--cream);}
 .data-table .rname{font-weight:700; color:var(--maroon-ink); white-space:normal; min-width:160px; max-width:240px;}
 .data-table .num{font-variant-numeric:tabular-nums; font-weight:600;}
-.data-table .addr{max-width:220px;}
-.data-table .addr-inner{display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:default;}
+.data-table .addr{max-width:260px;}
+.est-mark{color:var(--gold); font-weight:800; margin-left:2px;}
+.table-note{font-size:0.78rem; color:var(--muted); line-height:1.5; margin-top:14px;}
+.data-table .addr-inner{display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:help;}
+
+/* Custom address tooltip -- fixed-positioned and appended to <body>, so it
+   is never clipped by .table-scroll's overflow:auto the way a tooltip
+   nested inside the scrolling table would be. */
+.addr-tooltip{
+  position:fixed; z-index:999; max-width:300px;
+  background:var(--maroon-ink); color:#fdf1e0;
+  font-size:0.8rem; font-weight:500; line-height:1.45;
+  padding:9px 13px; border-radius:10px;
+  box-shadow:0 14px 30px -10px rgba(0,0,0,0.45);
+  pointer-events:none; opacity:0; transform:translateY(4px);
+  transition:opacity .12s ease, transform .12s ease;
+}
+.addr-tooltip.visible{opacity:1; transform:translateY(0);}
 
 /* ============ METHODOLOGY / TRUST PANEL ============ */
 .methodology{background:var(--paper); border:1px solid var(--line); border-radius:26px; padding:clamp(20px,2.2vw,30px);}
@@ -383,6 +402,60 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     // e.g. an address containing a quoted building name in a title="".
     return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
+
+  // Anything Google didn't publish an actual menu price for -- we fall back
+  // to prices typical for the area, and mark those so the number isn't read
+  // as something the restaurant itself stated.
+  function isEstimatedPrice(r){
+    return !!r.price_source && r.price_source !== 'Verified Google Price';
+  }
+
+  // Custom address tooltip, delegated at the document level so it works for
+  // every .addr-inner cell rendered now or later (live table, final table,
+  // any re-sort) without re-attaching listeners on every render. Fixed
+  // positioning + appending to <body> keeps it from being clipped by
+  // .table-scroll's overflow:auto, unlike a tooltip nested inside the table.
+  let addrTooltipEl = null;
+  function getAddrTooltip(){
+    if(!addrTooltipEl){
+      addrTooltipEl = document.createElement('div');
+      addrTooltipEl.className = 'addr-tooltip';
+      document.body.appendChild(addrTooltipEl);
+    }
+    return addrTooltipEl;
+  }
+  function showAddrTooltip(target){
+    const full = target.dataset.full;
+    if(!full) return;
+    const tip = getAddrTooltip();
+    tip.textContent = full;
+    tip.classList.add('visible');
+    const rect = target.getBoundingClientRect();
+    const top = rect.bottom + 8;
+    let left = rect.left;
+    const maxLeft = window.innerWidth - tip.offsetWidth - 12;
+    if(left > maxLeft) left = Math.max(12, maxLeft);
+    tip.style.top = top + 'px';
+    tip.style.left = left + 'px';
+  }
+  function hideAddrTooltip(){
+    if(addrTooltipEl) addrTooltipEl.classList.remove('visible');
+  }
+  document.addEventListener('mouseover', (e) => {
+    const el = e.target.closest('.addr-inner');
+    if(el) showAddrTooltip(el);
+  });
+  document.addEventListener('mouseout', (e) => {
+    if(e.target.closest('.addr-inner')) hideAddrTooltip();
+  });
+  document.addEventListener('focusin', (e) => {
+    const el = e.target.closest('.addr-inner');
+    if(el) showAddrTooltip(el);
+  });
+  document.addEventListener('focusout', (e) => {
+    if(e.target.closest('.addr-inner')) hideAddrTooltip();
+  });
+  window.addEventListener('scroll', hideAddrTooltip, true);
 
   function animateCount(el, target, suffix){
     const dur = 900, start = performance.now();
@@ -697,16 +770,21 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
         <td class="num">${r.avg_google_rating}★</td>
         <td class="num">${r.total_google_ratings.toLocaleString()}</td>
         <td class="num">${r.positive_sentiment_pct}%</td>
-        <td>${escapeHtml(r.price_range)}</td>
-        <td class="addr"><span class="addr-inner" title="${escapeHtml(r.address||'')}">${escapeHtml(r.address||'')}</span></td>
+        <td>${escapeHtml(r.price_range)}${isEstimatedPrice(r) ? '<span class="est-mark">*</span>' : ''}</td>
+        <td class="addr"><span class="addr-inner" tabindex="0" data-full="${escapeHtml(r.address||'')}">${escapeHtml(r.address||'')}</span></td>
       </tr>`).join('');
 
     function th(label, key){
       if(!sortable || !key) return `<th>${label}</th>`;
       const isActive = tableSort.key === key;
-      const arrow = isActive ? (tableSort.dir === 'desc' ? ' ▼' : ' ▲') : '';
       const ariaSort = isActive ? (tableSort.dir === 'desc' ? 'descending' : 'ascending') : 'none';
-      return `<th class="sortable${isActive?' active':''}" data-sort-key="${key}" tabindex="0" role="button" aria-sort="${ariaSort}">${label}${arrow}</th>`;
+      // Same glyph whether active or not -- an inactive column differs only
+      // in colour/opacity, so every sortable header reads as one family
+      // instead of a mismatched ⇅ sitting next to the active triangle.
+      const icon = isActive
+        ? `<span class="sort-icon active">${tableSort.dir === 'desc' ? '▼' : '▲'}</span>`
+        : `<span class="sort-icon">▼</span>`;
+      return `<th class="sortable${isActive?' active':''}" data-sort-key="${key}" tabindex="0" role="button" aria-sort="${ariaSort}">${label}${icon}</th>`;
     }
 
     document.getElementById(targetId).innerHTML = `
@@ -784,6 +862,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
       <div class="chart-card" style="margin-top:22px;">
         <div class="chart-card-head"><div class="chart-title">Restaurants Performance Overview</div><div class="chart-sub">Every metric behind the ranking, for every spot analyzed — click a column header to sort</div></div>
         <div class="table-scroll"><table class="data-table" id="dataTable"></table></div>
+        ${results.some(isEstimatedPrice) ? `<div class="table-note"><span class="est-mark">*</span> Price estimated from what comparable venues nearby charge — this restaurant hasn't published its own prices on Google.</div>` : ''}
       </div>`;
     renderCharts(results, showCuisineChart, bestValue);
     renderDataTable(results, 'dataTable', true);

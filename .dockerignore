@@ -1,0 +1,29 @@
+# Keep the build context small -- everything here is either irrelevant to the
+# running service or would bloat/poison the image.
+.git
+.github
+.gitignore
+.DS_Store
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+
+# The notebook is the source of truth for server.py, but the image only needs
+# the generated server.py -- shipping a 120KB notebook adds nothing at runtime.
+Dubai_NLP_Engine.ipynb
+
+# Local virtualenvs must never leak in: they hold macOS-native wheels that
+# would break inside a Linux image.
+venv
+.venv
+env
+
+# Local env files -- secrets are passed in at run time, never baked into a layer.
+.env
+*.env
+
+Dockerfile
+.dockerignore
+DEPLOY.md
+README.md
