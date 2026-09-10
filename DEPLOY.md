@@ -72,6 +72,9 @@ check that `HF_HOME` is the same at build and run time.
 | `GOOGLE_PLACES_API_KEY` | **Yes** — the app refuses to start without it | Places Text Search + Autocomplete |
 | `HF_TOKEN` | No | Avoids Hugging Face rate limits. Models are baked in, so this matters less in the image than locally |
 | `PORT` | No (defaults to 7860) | Most hosts inject this automatically |
+| `DAILY_SEARCH_CAP` | No (defaults 1000) | Searches per day across all visitors before the app stops calling Google. Cache hits don't count |
+| `SEARCH_PER_HOUR` | No (defaults 12) | Searches per visitor per hour |
+| `SUGGEST_PER_MINUTE` | No (defaults 60) | Area-typeahead calls per visitor per minute |
 | `PREWARM_CACHE` | No (defaults off) | **Set to `1` in production.** Warms popular areas in the background so a demo link returns instantly. It's off by default because it saturates a laptop's CPU — on a deployed box with idle capacity it's exactly what you want |
 
 Never bake these into the image. Pass them at run time.
@@ -127,7 +130,7 @@ Worth doing before the link goes anywhere, not after:
   or IP, and to just the Places APIs it needs.
 - **Set a billing alert and a daily quota cap** on Places Text Search and
   Places Autocomplete.
-- **Rate-limit `/api/area-suggest` and `/api/recommend`.** Autocomplete fires as
-  people type, and both endpoints bill per request. The in-process suggestion
-  cache helps with repeat prefixes but won't stop a bot or someone holding down
-  a key in the Area field.
+- **Rate limiting is built in** (see the variables above) and is the real
+  ceiling here: a free-tier billing account can't set Google's quota caps, and
+  spend-cap enforcement doesn't cover Places. Tune `DAILY_SEARCH_CAP` to what
+  you're willing to spend in a day.

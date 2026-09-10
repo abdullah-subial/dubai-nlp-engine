@@ -4,7 +4,7 @@ import json
 import re
 import threading
 import nltk
-from collections import Counter
+from collections import Counter, defaultdict
 
 import numpy as np
 import pandas as pd
@@ -13,7 +13,7 @@ import torch
 import spacy
 from spacy.cli import download
 from transformers import pipeline, AutoModelForSequenceClassification, AutoTokenizer
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 
 
@@ -58,6 +58,92 @@ FIELD_MASK = (
     "places.shortFormattedAddress,"
     "nextPageToken"
 )
+
+
+# ==========================================
+# REQUEST LIMITS
+# Google Places bills per request and this runs behind a public URL, so one
+# crawler or one stuck key could spend real money. A free-tier billing
+# account can't set Google's own quota caps, and spend-cap enforcement
+# doesn't cover Places -- so these are the only ceiling that actually
+# exists. Deliberately in-memory: a single-instance deployment needs
+# nothing more, and counters resetting on restart is the safe direction to
+# fail (a restart costs at most one window, never unbounded spend).
+# ==========================================
+RATE_LIMITS = {
+    # bucket -> (max requests, window seconds). Typeahead fires on nearly
+    # every keystroke, so it needs a far looser ceiling than a search, which
+    # costs several paginated Places calls plus the whole NLP pipeline.
+    "suggest": (int(os.environ.get("SUGGEST_PER_MINUTE", "60")), 60),
+    "search": (int(os.environ.get("SEARCH_PER_HOUR", "12")), 3600),
+}
+DAILY_SEARCH_CAP = int(os.environ.get("DAILY_SEARCH_CAP", "1000"))
+
+_rate_hits = defaultdict(list)
+_rate_lock = threading.Lock()
+_daily_searches = {"day": None, "count": 0}
+
+
+class DailyLimitReached(RuntimeError):
+    """Raised when the whole deployment has spent its Places budget for the day."""
+
+
+def _client_key(request):
+    """Who to count this request against. Behind Spaces -- and most hosts --
+    the socket peer is a proxy, so the first X-Forwarded-For hop is the real
+    caller. Spoofable, but this guards against cost, not attackers."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _prune_rate_state(now):
+    """Drop clients whose window has fully elapsed, so a long-running process
+    doesn't accumulate an entry per IP forever."""
+    for key, hits in list(_rate_hits.items()):
+        window = RATE_LIMITS[key[0]][1]
+        fresh = [t for t in hits if now - t < window]
+        if fresh:
+            _rate_hits[key] = fresh
+        else:
+            del _rate_hits[key]
+
+
+def _check_rate_limit(bucket, request):
+    limit, window = RATE_LIMITS[bucket]
+    key = (bucket, _client_key(request))
+    now = time.time()
+    with _rate_lock:
+        if len(_rate_hits) > 1000:
+            _prune_rate_state(now)
+        hits = [t for t in _rate_hits[key] if now - t < window]
+        if len(hits) >= limit:
+            _rate_hits[key] = hits
+            retry_after = max(1, int(window - (now - hits[0])) + 1)
+            raise HTTPException(
+                status_code=429,
+                detail="You're going a bit fast -- give it a moment and try again.",
+                headers={"Retry-After": str(retry_after)},
+            )
+        hits.append(now)
+        _rate_hits[key] = hits
+
+
+def _count_search_against_daily_cap():
+    """Counted where Google is actually called, not at the endpoint, so a
+    cache hit costs nothing and doesn't eat into the day's budget."""
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    with _rate_lock:
+        if _daily_searches["day"] != today:
+            _daily_searches["day"] = today
+            _daily_searches["count"] = 0
+        if _daily_searches["count"] >= DAILY_SEARCH_CAP:
+            raise DailyLimitReached(
+                "This demo has hit its daily search limit. It resets at midnight UTC -- "
+                "please come back tomorrow."
+            )
+        _daily_searches["count"] += 1
 
 
 def load_spacy_model():
@@ -283,6 +369,8 @@ def _fetch_best_rated_places(query_string, max_pages, top_n):
 def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=20):
     if not area or not area.strip():
         raise ValueError("area is required (e.g. 'Dubai Marina').")
+
+    _count_search_against_daily_cap()
 
     query_string = f"{cuisine} restaurants in {area}".strip()
     places = _fetch_best_rated_places(query_string, max_pages=max_pages, top_n=top_n)
@@ -974,18 +1062,23 @@ app.add_middleware(
 
 
 @app.get("/api/area-suggest")
-def area_suggest(q: str = Query("", description="Partial area name typed so far")):
+def area_suggest(request: Request, q: str = Query("", description="Partial area name typed so far")):
+    _check_rate_limit("suggest", request)
     return {"suggestions": suggest_dubai_areas(q)}
 
 
 @app.get("/api/recommend")
 def recommend(
+    request: Request,
     area: str = Query(..., min_length=1, description="Required. e.g. 'Dubai Marina'"),
     cuisine: str = Query("", description="Optional cuisine filter, e.g. 'Italian'"),
     budget: float = Query(None, description="Optional max budget in AED"),
 ):
+    _check_rate_limit("search", request)
     try:
         return get_recommendations(area=area, cuisine=cuisine, max_budget=budget)
+    except DailyLimitReached as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except RuntimeError as exc:
@@ -994,14 +1087,20 @@ def recommend(
 
 @app.get("/api/recommend/stream")
 def recommend_stream(
+    request: Request,
     area: str = Query(..., min_length=1, description="Required. e.g. 'Dubai Marina'"),
     cuisine: str = Query("", description="Optional cuisine filter, e.g. 'Italian'"),
     budget: float = Query(None, description="Optional max budget in AED"),
 ):
+    _check_rate_limit("search", request)
+
     def event_generator():
         try:
             for event in stream_recommendation_events(area=area, cuisine=cuisine, max_budget=budget):
                 yield json.dumps(event) + "\n"
+        except DailyLimitReached as exc:
+            # Tagged so the page can show it as a limit rather than a failed search.
+            yield json.dumps({"type": "error", "kind": "limit", "message": str(exc)}) + "\n"
         except (ValueError, RuntimeError) as exc:
             yield json.dumps({"type": "error", "message": str(exc)}) + "\n"
 
