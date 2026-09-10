@@ -5,6 +5,7 @@ import re
 import threading
 import nltk
 from collections import Counter, defaultdict
+from functools import lru_cache
 
 import numpy as np
 import pandas as pd
@@ -718,6 +719,50 @@ def _phrase_for_token(token, doc, entity_spans):
     return None
 
 
+# WordNet hypernyms that mean "this is edible". Used as a NEGATIVE test: a
+# candidate is rejected only when WordNet knows the word and none of its
+# senses descend from one of these. A positive "is this food?" test would
+# throw away machboos, knafeh and ouzi -- the local dishes this app exists to
+# surface -- because WordNet has never heard of them. Here, unknown to
+# WordNet counts as evidence FOR a dish name, not against.
+FOOD_HYPERNYM_ROOTS = {
+    "food.n.01", "food.n.02", "dish.n.02", "beverage.n.01",
+    "helping.n.01", "produce.n.01", "meat.n.01", "baked_goods.n.01",
+}
+
+
+@lru_cache(maxsize=4096)
+def _word_could_be_food(word):
+    """False only when WordNet is confident this word is never edible.
+
+    "spot", "care" and "experience" are all grammatically valid objects of
+    "we tried ..." and were being served as famous dishes; WordNet knows all
+    three and knows none of them as food.
+    """
+    try:
+        from nltk.corpus import wordnet as wn
+        synsets = wn.synsets(word, pos=wn.NOUN)
+    except Exception:
+        return True  # no corpus -- don't filter on a signal we can't read
+    if not synsets:
+        # Not a noun WordNet knows. If it knows the word at all, it's a
+        # describing word spaCy tagged as a noun in context ("unlimited",
+        # "delicious") -- not a dish. A word WordNet has never seen is the
+        # case we're protecting: a transliterated local dish name.
+        return not wn.synsets(word)
+    for syn in synsets:
+        for path in syn.hypernym_paths():
+            if any(h.name() in FOOD_HYPERNYM_ROOTS for h in path):
+                return True
+    return False
+
+
+def _phrase_could_be_food(phrase):
+    """One edible word carries the phrase: "chicken poke bowl" is a dish even
+    though WordNet files "bowl" as a container."""
+    return any(_word_could_be_food(w) for w in phrase.lower().split())
+
+
 def extract_dish_and_vibe(texts):
     if not texts:
         return "Chef Special", "Welcoming, Cozy, Lively, Warm, Friendly, Excellent, Great, Elegant", dict(DEFAULT_VIBE_FREQUENCIES)
@@ -746,9 +791,16 @@ def extract_dish_and_vibe(texts):
             if phrase and not set(phrase.lower().split()) & GENERIC_FALLBACK_WORDS:
                 fallback_candidates.append(phrase)
 
-    dish_candidates = primary_candidates or fallback_candidates
-    top_dishes = Counter(dish_candidates).most_common(1)
-    famous_dish = top_dishes[0][0] if top_dishes else "Chef Special"
+    dish_candidates = [d for d in primary_candidates if _phrase_could_be_food(d)]
+    if not dish_candidates:
+        dish_candidates = [d for d in fallback_candidates if _phrase_could_be_food(d)]
+
+    # Prefer multi-word phrases, then frequency. The failures were all bare
+    # nouns ("Spot", "Care", "Gravy") while the good ones were qualified
+    # ("Chicken Poke Bowl", "Masala Omelette") -- length is a decent proxy for
+    # "someone named an actual dish" rather than "someone used a verb".
+    counts = Counter(dish_candidates)
+    famous_dish = max(counts, key=lambda d: (len(d.split()) > 1, counts[d]), default="Chef Special")
     return famous_dish, vibe_check, vibe_word_frequencies
 
 
