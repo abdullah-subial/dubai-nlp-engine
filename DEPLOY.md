@@ -75,7 +75,7 @@ check that `HF_HOME` is the same at build and run time.
 | `DAILY_SEARCH_CAP` | No (defaults 1000) | Searches per day across all visitors before the app stops calling Google. Cache hits don't count |
 | `SEARCH_PER_HOUR` | No (defaults 12) | Searches per visitor per hour |
 | `SUGGEST_PER_MINUTE` | No (defaults 60) | Area-typeahead calls per visitor per minute |
-| `PREWARM_CACHE` | No (defaults off) | **Set to `1` in production.** Warms popular areas in the background so a demo link returns instantly. It's off by default because it saturates a laptop's CPU — on a deployed box with idle capacity it's exactly what you want |
+| `PREWARM_CACHE` | No (defaults off) | Warms popular areas in the background so a demo link returns instantly. Leave it off for a first deploy — it saturates a laptop's CPU, and a small shared instance isn't far off a laptop. Turn it on once you've confirmed the deployed app is responsive, and watch that it stays that way |
 
 Never bake these into the image. Pass them at run time.
 
@@ -83,10 +83,13 @@ Never bake these into the image. Pass them at run time.
 
 ## 4. Deploy to Hugging Face Spaces (recommended)
 
-Best fit here: the free CPU tier has enough memory for both transformer models,
-it's built for ML demos, and it's a credible link for a portfolio post.
+Best fit here: it's built for ML demos and it's a credible link for a
+portfolio post. Check the current pricing page before you count on a tier
+being free — what Spaces offers on Docker SDK has changed before, and the
+memory floor below still applies whichever tier you land on.
 
-1. Create a new Space, SDK = **Docker**, hardware = CPU basic.
+1. Create a new Space, SDK = **Docker**, hardware = the smallest CPU tier
+   available to your account.
 2. Spaces needs a `README.md` at the repo root with YAML frontmatter — it won't
    pick up the Dockerfile without it:
 
@@ -102,7 +105,8 @@ it's built for ML demos, and it's a credible link for a portfolio post.
    ```
 
 3. Add your keys under **Settings → Variables and secrets** as *secrets*:
-   `GOOGLE_PLACES_API_KEY`, `HF_TOKEN`, and `PREWARM_CACHE=1` as a variable.
+   `GOOGLE_PLACES_API_KEY` and `HF_TOKEN`. Leave `PREWARM_CACHE` unset for now
+   (see the table above).
 4. Push:
 
    ```bash
@@ -126,11 +130,33 @@ Budget ~2GB.
 
 Worth doing before the link goes anywhere, not after:
 
-- **Restrict the API key.** In Google Cloud Console, limit it by HTTP referrer
-  or IP, and to just the Places APIs it needs.
-- **Set a billing alert and a daily quota cap** on Places Text Search and
-  Places Autocomplete.
+- **Restrict the API key to Places API (New)**, under *API restrictions*. That
+  single entry covers both calls the app makes -- Text Search and Autocomplete.
+
+  Leave **Application restrictions** set to **None**. This is deliberate, not
+  an oversight: the key is used server-side, from the Python process inside the
+  container, so an HTTP-referrer restriction has no referrer to match and
+  would reject every call. IP allowlisting fails for a different reason --
+  a Spaces container's egress address isn't stable enough to pin.
+
+  That leaves the API restriction plus the app's own rate limits as the
+  ceiling, which is the trade this deployment makes.
+- **Set a billing alert** on the project. A daily quota cap on Places is worth
+  setting too, but it isn't available on a free-tier billing account, so treat
+  the alert as the thing you'll actually get.
 - **Rate limiting is built in** (see the variables above) and is the real
-  ceiling here: a free-tier billing account can't set Google's quota caps, and
-  spend-cap enforcement doesn't cover Places. Tune `DAILY_SEARCH_CAP` to what
-  you're willing to spend in a day.
+  ceiling here: with no Google-side quota cap available, and spend-cap
+  enforcement not covering Places, `DAILY_SEARCH_CAP` is what stands between a
+  shared link and a surprise bill. Tune it to what you're willing to spend in a
+  day.
+
+### Rotating the key
+
+Update the deployment before revoking the old key, or the live site 500s in the
+gap between the two:
+
+1. Create the new key and restrict it as above.
+2. Update `GOOGLE_PLACES_API_KEY` in the host's secrets. On Spaces, changing a
+   secret restarts the Space; if it doesn't, restart it from Settings.
+3. Run one search against the live site to confirm the new key works.
+4. **Then** delete the old key.
