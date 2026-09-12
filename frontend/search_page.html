@@ -149,11 +149,17 @@ h1 em{
 }
 .suggest-list.open{display:block;}
 .suggest-item{
-  padding:10px 14px;
+  padding:9px 14px;
   border-radius:9px;
   font-size:0.95rem;
   color:var(--ink);
   cursor:pointer;
+}
+.suggest-main{display:block; font-weight:600; line-height:1.3;}
+.suggest-sub{
+  display:block; font-size:0.78rem; color:var(--muted);
+  line-height:1.3; margin-top:1px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .suggest-item:hover, .suggest-item.active{background:rgba(114,28,59,0.1);}
 
@@ -325,6 +331,27 @@ footer{
     input.setAttribute("aria-controls", listId);
     list.setAttribute("role", "listbox");
 
+    // Suggestions arrive either as plain strings (the static cuisine list) or
+    // as {text, main, secondary} from /api/area-suggest. Everything that reads
+    // an item goes through these so both shapes work.
+    function itemValue(o){ return typeof o === "string" ? o : (o && o.text) || ""; }
+    function itemMain(o){
+      if (typeof o === "string") return o;
+      return (o && o.main) || shortAreaName(itemValue(o));
+    }
+    function itemSecondary(o){
+      if (typeof o === "string") return "";
+      if (o && o.secondary) return o.secondary;
+      // No structured form from Google -- derive it by removing the main part.
+      const full = itemValue(o), main = itemMain(o);
+      return full.startsWith(main) ? full.slice(main.length).replace(/^\s*[-\u2013,]\s*/, "") : "";
+    }
+    function esc(v){
+      return String(v).replace(/[&<>"']/g, c => (
+        {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]
+      ));
+    }
+
     function renderItems(items){
       currentItems = items;
       activeIndex = -1;
@@ -335,7 +362,15 @@ footer{
         input.removeAttribute("aria-activedescendant");
         return;
       }
-      list.innerHTML = items.map((o, i) => `<div class="suggest-item" role="option" id="${listId}-opt-${i}">${o}</div>`).join("");
+      // data-value carries the canonical string: with two child elements,
+      // textContent would run the main and secondary text together.
+      list.innerHTML = items.map((o, i) => {
+        const sub = itemSecondary(o);
+        return `<div class="suggest-item" role="option" id="${listId}-opt-${i}" data-value="${esc(itemValue(o))}">`
+             + `<span class="suggest-main">${esc(itemMain(o))}</span>`
+             + (sub ? `<span class="suggest-sub">${esc(sub)}</span>` : "")
+             + `</div>`;
+      }).join("");
       list.classList.add("open");
       input.setAttribute("aria-expanded", "true");
     }
@@ -380,7 +415,7 @@ footer{
       const item = e.target.closest(".suggest-item");
       if(!item) return;
       e.preventDefault();
-      confirmPick(item.textContent);
+      confirmPick(item.dataset.value);
       renderItems([]);
     });
 
@@ -396,7 +431,7 @@ footer{
         updateActive();
       } else if(e.key === "Enter"){
         const pick = activeIndex >= 0 ? currentItems[activeIndex] : currentItems[0];
-        if(pick){ e.preventDefault(); confirmPick(pick); renderItems([]); }
+        if(pick){ e.preventDefault(); confirmPick(itemValue(pick)); renderItems([]); }
       } else if(e.key === "Escape"){
         renderItems([]);
       }
