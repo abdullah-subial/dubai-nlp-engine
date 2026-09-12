@@ -768,7 +768,26 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
         },
         options:{
           responsive:true, maintainAspectRatio:false, cutout:'78%',
-          plugins:{ legend:{ position:'bottom', labels:{ color:'#2b1820', font:{size:11}, boxWidth:11, padding:10 } } }
+          plugins:{ legend:{ position:'bottom', labels:{
+            color:'#2b1820', font:{size:11}, boxWidth:11, padding:10,
+            // Share of the analyzed spots, appended to each legend entry.
+            // Done here rather than by rewriting data.labels so the tooltip
+            // still reads "Italian: 9" instead of "Italian (45%): 9".
+            // Percentages are rounded independently and so need not total
+            // exactly 100.
+            generateLabels(chart){
+              const ds = chart.data.datasets[0];
+              const total = ds.data.reduce((a,b)=>a+b, 0) || 1;
+              return chart.data.labels.map((label, i) => ({
+                text: `${label} (${Math.round(ds.data[i] / total * 100)}%)`,
+                fillStyle: ds.backgroundColor[i],
+                strokeStyle: ds.borderColor,
+                lineWidth: ds.borderWidth,
+                hidden: !chart.getDataVisibility(i),
+                index: i,
+              }));
+            }
+          } } }
         }
       });
     }
