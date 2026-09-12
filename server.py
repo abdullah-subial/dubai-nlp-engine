@@ -346,19 +346,18 @@ def _clean_cuisine_label(raw):
     return cleaned or raw
 
 
-# Google's "type" field mixes real cuisines ("Italian Restaurant") with
-# dining-style descriptors that aren't cuisines at all ("Family Restaurant",
-# plain "Restaurant"). If the user explicitly searched a cuisine and Google's
-# own label for a matched place is one of these non-cuisine terms, showing
-# the searched cuisine is more informative than an uninformative style label.
-GENERIC_CUISINE_LABELS = {
-    "restaurant", "family", "fast food", "cafe", "diner",
-    "casual dining", "fine dining", "eatery", "food", "dining", "general dining",
-}
-
-
+# When the user named a cuisine, that is what the column reports -- for every
+# row, not just the ones Google labelled vaguely. Google's own label describes
+# the venue's primary type, which for an Italian search can come back as
+# "Pizza", "Family Restaurant" or "Fine Dining": three different words for
+# results the user asked for as Italian, in a column they expect to read
+# Italian throughout. The label is Google's answer to a different question.
+#
+# This only applies to a filtered search. With no cuisine given, Google's label
+# is the only signal there is and is used as-is -- which is also the case where
+# the Cuisine Mix chart is shown, so nothing there collapses to one slice.
 def _resolve_cuisine_label(cuisine_label, searched_cuisine):
-    if searched_cuisine and searched_cuisine.strip() and cuisine_label.strip().lower() in GENERIC_CUISINE_LABELS:
+    if searched_cuisine and searched_cuisine.strip():
         return searched_cuisine.strip().title()
     return cuisine_label
 
@@ -375,10 +374,59 @@ def _resolve_cuisine_label(cuisine_label, searched_cuisine):
 RATING_CASCADE = [4.9, 4.8, 4.5, 4.0, 3.5, None]
 
 
-def _fetch_best_rated_places(query_string, max_pages, top_n):
+# Text Search ranks by relevance, not location, and this call carries no
+# locationRestriction -- we hold the area as text, not coordinates. So a search
+# for Dubai Marina can return a famous Downtown venue purely because it matches
+# the words well. Filter what comes back against the area's own name.
+#
+# "Dubai" and the country words are stripped because every address in the
+# emirate contains them; what is left is the part that actually distinguishes
+# one neighbourhood from another ("marina", "barsha", "mirdif").
+AREA_STOPWORDS = {"dubai", "united", "arab", "emirates", "uae", "the", "area", "and"}
+
+
+def _area_match_tokens(area):
+    head = re.split(r"\s+[-\u2013]\s+|,", area or "")[0]
+    return {
+        token for token in re.findall(r"[a-z]+", head.lower())
+        if token not in AREA_STOPWORDS and len(token) > 2
+    }
+
+
+def _filter_places_to_area(places, area):
+    """Drop results whose address does not name the area that was searched."""
+    tokens = _area_match_tokens(area)
+    if not tokens:
+        # Nothing distinctive to match on -- a bare "Dubai", say. Filtering on
+        # no signal would drop everything.
+        return places
+    kept = [
+        place for place in places
+        if any(
+            token in (place.get("formattedAddress") or place.get("shortFormattedAddress") or "").lower()
+            for token in tokens
+        )
+    ]
+    if not kept:
+        # Addresses in this area evidently do not repeat its name. Relevance
+        # -ranked results beat an empty page, so keep them and say so.
+        print(f"[area-filter] nothing addressed in {sorted(tokens)}; keeping all {len(places)}")
+        return places
+    if len(kept) < len(places):
+        print(f"[area-filter] dropped {len(places) - len(kept)} of {len(places)} not addressed in {sorted(tokens)}")
+    return kept
+
+
+def _fetch_best_rated_places(query_string, max_pages, top_n, area=""):
     places = []
     for threshold in RATING_CASCADE:
-        places = _fetch_places_pages(query_string, max_pages=max_pages, min_rating=threshold)
+        places = _filter_places_to_area(
+            _fetch_places_pages(query_string, max_pages=max_pages, min_rating=threshold),
+            area,
+        )
+        # Counted after filtering, so the cascade widens the rating threshold
+        # until there are enough results IN THE AREA, rather than enough
+        # anywhere in Dubai.
         if len(places) >= top_n:
             break
     return places
@@ -391,7 +439,7 @@ def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=2
     _count_search_against_daily_cap()
 
     query_string = f"{cuisine} restaurants in {area}".strip()
-    places = _fetch_best_rated_places(query_string, max_pages=max_pages, top_n=top_n)
+    places = _fetch_best_rated_places(query_string, max_pages=max_pages, top_n=top_n, area=area)
 
     if not places:
         empty_summary = pd.DataFrame([{
@@ -747,6 +795,15 @@ FOOD_HYPERNYM_ROOTS = {
     "helping.n.01", "produce.n.01", "meat.n.01", "baked_goods.n.01",
 }
 
+# WordNet files these under food, correctly -- a meal IS food. They are still
+# useless as the answer to "what is this place known for", so they are rejected
+# by name. Everything else is handled by the descendant rule below.
+GENERIC_FOOD_WORDS = {
+    "meal", "meals", "course", "courses", "plate", "plates", "platter",
+    "platters", "menu", "menus", "breakfast", "lunch", "dinner", "brunch",
+    "starter", "starters", "main", "mains", "side", "sides",
+}
+
 
 @lru_cache(maxsize=4096)
 def _word_could_be_food(word):
@@ -767,9 +824,21 @@ def _word_could_be_food(word):
         # "delicious") -- not a dish. A word WordNet has never seen is the
         # case we're protecting: a transliterated local dish name.
         return not wn.synsets(word)
+    if word in GENERIC_FOOD_WORDS:
+        return False
+    # A STRICT descendant of a food root, not a root itself. "Portions" was
+    # reaching the dish slot because it resolves to helping.n.01 -- which is
+    # one of the roots -- so the old "is a root anywhere in the path" test
+    # matched it against itself. The same held for "portion", "serving",
+    # "helping", "dish", "food" and "cuisine": every one of them names the
+    # category rather than anything in it. Requiring a proper ancestor keeps
+    # pizza, biryani, gravy, mocha and every other real dish, since those sit
+    # underneath a root rather than on it.
     for syn in synsets:
+        if syn.name() in FOOD_HYPERNYM_ROOTS:
+            continue
         for path in syn.hypernym_paths():
-            if any(h.name() in FOOD_HYPERNYM_ROOTS for h in path):
+            if any(h.name() in FOOD_HYPERNYM_ROOTS for h in path[:-1]):
                 return True
     return False
 

@@ -1,5 +1,5 @@
 ---
-title: Dine Dubai
+title: Find My Table
 emoji: 🍽️
 colorFrom: red
 colorTo: yellow
@@ -8,7 +8,7 @@ app_port: 7860
 pinned: false
 ---
 
-# Dine Dubai
+# Find My Table
 
 A restaurant recommendation engine for Dubai that reads what guests actually
 wrote, not just how many stars they left.
