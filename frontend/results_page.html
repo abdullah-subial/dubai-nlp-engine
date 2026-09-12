@@ -655,10 +655,38 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
     if (typeof Chart === "undefined") {
       throw new Error("Chart.js did not load");
     }
+
+    // Browsers that force-darken a page (Samsung Internet does this by default,
+    // and ignores color-scheme) invert CSS colours but cannot touch <canvas>
+    // pixels. That left chart text and gridlines -- drawn dark for a cream card
+    // -- sitting on a page background that had become near-black, so the labels
+    // vanished while the bars stayed visible.
+    //
+    // Painting an opaque ground inside the canvas makes each chart
+    // self-contained: the ground is canvas content, so it survives whatever the
+    // browser does to the page around it, and the dark text keeps the contrast
+    // it was designed against. destination-over draws it *behind* everything
+    // already rendered, so this runs without disturbing the chart itself.
+    // On an untouched page the fill matches --paper exactly and is invisible.
+    const canvasGround = {
+      id: 'canvasGround',
+      beforeDraw(chart){
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.fillStyle = '#fffdfb';
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(0, 0, chart.width, chart.height, 12);
+        else ctx.rect(0, 0, chart.width, chart.height);
+        ctx.fill();
+        ctx.restore();
+      }
+    };
     Object.values(charts).forEach(c => c && c.destroy());
 
     charts.scatter = new Chart(document.getElementById('scatterChart'), {
       type:'bubble',
+      plugins:[canvasGround],
       data:{ datasets:[{
         data: results.map(r=>{
           const trueX = r.price_numeric_max || r.price_numeric;
@@ -695,6 +723,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
 
     const byScore = [...results].sort((a,b)=>b.model_score-a.model_score);
     charts.bar = new Chart(document.getElementById('barChart'), {
+      plugins:[canvasGround],
       type:'bar',
       data:{
         labels: byScore.map(r=>r.restaurant_name),
@@ -732,6 +761,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
       const cuisineLabels = Object.keys(cuisineCounts);
       charts.cuisine = new Chart(document.getElementById('cuisineChart'), {
         type:'doughnut',
+        plugins:[canvasGround],
         data:{
           labels: cuisineLabels,
           datasets:[{ data: cuisineLabels.map(c=>cuisineCounts[c]), backgroundColor: cuisineLabels.map((_,i)=>CUISINE_PALETTE[i % CUISINE_PALETTE.length]), borderColor:'#fffdfb', borderWidth:2 }]
