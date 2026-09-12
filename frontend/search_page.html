@@ -7,54 +7,17 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Plus+Jakarta+Sans:wght@600;700;800&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  /* Accent roles split by job: --maroon is the one that has to stay legible as
-     TEXT, so it lightens on dark; --cta-bg is a FILL carrying white text, so it
-     stays a deep wine in both schemes. One variable could not do both. */
-  --maroon:#e9a6bf;
-  --maroon-ink:#f7e6ec;
-  --gold:#e6ad55;
-  --gold-soft:#6d5026;
-  --cream:#161013;
-  --paper:#211920;
-  --ink:#f2e7ea;
-  --muted:#ab929c;
-  --line:#3a2c33;
-  --cta-bg:#8d2347;
-  --cta-bg-hover:#a52b54;
-  --hover-tint:rgba(255,255,255,0.05);
-  --hover-strong:rgba(255,255,255,0.10);
-  --glow-a:rgba(217,142,40,0.13);
-  --glow-b:rgba(180,60,100,0.10);
-  --shadow-card:0 24px 60px -24px rgba(0,0,0,0.60);
-  --shadow-pop:0 18px 36px -14px rgba(0,0,0,0.65);
-  --shadow-cta:0 10px 24px -10px rgba(0,0,0,0.60);
+  --maroon:#721c3b;
+  --maroon-ink:#4a1226;
+  --gold:#d98e28;
+  --gold-soft:#f0c987;
+  --cream:#f7f4f0;
+  --paper:#fffdfb;
+  --ink:#2b1820;
+  --muted:#78616b;
+  --line:#e8dcd4;
 }
-@media (prefers-color-scheme: light){
-  :root{
-    --maroon:#721c3b;
-    --maroon-ink:#4a1226;
-    --gold:#d98e28;
-    --gold-soft:#f0c987;
-    --cream:#f7f4f0;
-    --paper:#fffdfb;
-    --ink:#2b1820;
-    --muted:#78616b;
-    --line:#e8dcd4;
-    --cta-bg:#721c3b;
-    --cta-bg-hover:#4a1226;
-    --hover-tint:rgba(114,28,59,0.04);
-    --hover-strong:rgba(114,28,59,0.10);
-    --glow-a:rgba(217,142,40,0.16);
-    --glow-b:rgba(114,28,59,0.10);
-    --shadow-card:0 24px 60px -24px rgba(74,18,38,0.28);
-    --shadow-pop:0 18px 36px -14px rgba(74,18,38,0.30);
-    --shadow-cta:0 10px 24px -10px rgba(114,28,59,0.55);
-  }
-}
-/* "light dark", not "only light": the page now genuinely supports both, so
-   browsers use these colours instead of inventing their own. It also makes
-   native controls (caret, placeholder, scrollbars) follow the scheme. */
-:root{color-scheme:light dark;}
+:root{color-scheme:only light;}
 *{box-sizing:border-box;}
 html,body{height:100%;}
 body{
@@ -78,8 +41,8 @@ body::before{
   position:absolute; top:-20%; left:50%; translate:-50% 0;
   width:min(1100px, 100%); height:700px;
   background:
-    radial-gradient(closest-side, var(--glow-a), transparent 70%),
-    radial-gradient(closest-side, var(--glow-b), transparent 70%);
+    radial-gradient(closest-side, rgba(217,142,40,0.16), transparent 70%),
+    radial-gradient(closest-side, rgba(114,28,59,0.10), transparent 70%);
   pointer-events:none;
   z-index:0;
 }
@@ -138,7 +101,7 @@ h1 em{
   border:1px solid var(--line);
   border-radius:26px;
   padding:14px;
-  box-shadow:var(--shadow-card);
+  box-shadow:0 24px 60px -24px rgba(74,18,38,0.28);
   width:100%;
   max-width:960px;
   display:flex;
@@ -158,7 +121,7 @@ h1 em{
   text-align:left;
   transition:background .15s ease;
 }
-.field:hover{background:var(--hover-tint);}
+.field:hover{background:rgba(114,28,59,0.04);}
 .field label{
   font-size:0.72rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;
   color:var(--maroon);
@@ -179,7 +142,7 @@ h1 em{
   background:#f1ebe6;
   border:1px solid var(--line);
   border-radius:14px;
-  box-shadow:var(--shadow-pop);
+  box-shadow:0 18px 36px -14px rgba(74,18,38,0.3);
   max-height:260px; overflow-y:auto;
   padding:6px;
   z-index:50;
@@ -192,7 +155,7 @@ h1 em{
   color:var(--ink);
   cursor:pointer;
 }
-.suggest-item:hover, .suggest-item.active{background:var(--hover-strong);}
+.suggest-item:hover, .suggest-item.active{background:rgba(114,28,59,0.1);}
 
 .field.has-error{animation:shake 0.4s ease;}
 .field.has-error label{color:#b3261e;}
@@ -208,7 +171,7 @@ h1 em{
 .finder-divider{width:1px; background:var(--line); margin:10px 0; align-self:stretch;}
 .finder-submit{
   display:flex; align-items:center; justify-content:center; gap:9px;
-  background:var(--cta-bg); color:#fff8f0;
+  background:var(--maroon); color:#fff8f0;
   border:none; border-radius:16px;
   width:100%;
   padding:20px 0;
@@ -216,9 +179,9 @@ h1 em{
   font-weight:700; font-size:1.2rem;
   cursor:pointer; white-space:nowrap;
   transition:transform .18s ease, background .18s ease;
-  box-shadow:var(--shadow-cta);
+  box-shadow:0 10px 24px -10px rgba(114,28,59,0.55);
 }
-.finder-submit:hover{background:var(--cta-bg-hover); transform:translateY(-1px);}
+.finder-submit:hover{background:var(--maroon-ink); transform:translateY(-1px);}
 .finder-submit:active{transform:translateY(0);}
 .finder-submit:focus-visible, .field input:focus-visible{outline:2px solid var(--gold); outline-offset:2px;}
 .finder-submit svg{transition:transform .18s ease;}
