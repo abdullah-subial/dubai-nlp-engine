@@ -498,11 +498,21 @@ def _filter_places_to_area(places, area):
 # corporate_office. Restricting the search to one includedType is not an option
 # either: it takes a single value, and a dining guide wants cafes and bakeries
 # alongside restaurants. So filter on what Google says the place IS.
+# Google returns several types per place, not one: a seafood restaurant comes
+# back as ["seafood_restaurant", "restaurant", "food", "point_of_interest",
+# "establishment"]. So a venue usually matches here several times over, and the
+# generic "food" is the widest net of all.
+#
+# Listed explicitly are the food types that end in NEITHER _restaurant nor
+# _cafe, since the suffix rule below cannot reach them -- a donut_shop or a
+# confectionery would otherwise depend on "food" alone being present.
 FOOD_PLACE_TYPES = {
-    "restaurant", "cafe", "coffee_shop", "bakery", "bar", "pub", "wine_bar",
-    "bar_and_grill", "meal_takeaway", "meal_delivery", "food_court", "deli",
-    "ice_cream_shop", "dessert_shop", "juice_shop", "tea_house", "food",
-    "sandwich_shop", "steak_house", "diner", "buffet_restaurant", "bistro",
+    "food", "restaurant", "cafe", "cafeteria", "coffee_shop", "bakery",
+    "bar", "pub", "wine_bar", "bar_and_grill", "diner", "deli", "bistro",
+    "meal_takeaway", "meal_delivery", "food_court", "steak_house",
+    "ice_cream_shop", "dessert_shop", "juice_shop", "tea_house",
+    "sandwich_shop", "bagel_shop", "donut_shop", "acai_shop",
+    "candy_store", "confectionery", "chocolate_shop", "chocolate_factory",
 }
 
 
@@ -517,9 +527,11 @@ def _is_food_place(place):
         return True
     if types & FOOD_PLACE_TYPES:
         return True
-    # Table A carries dozens of cuisine-specific variants (italian_restaurant,
-    # pizza_restaurant, vegan_restaurant, ...). Match the shape instead of
-    # trying to list them all and going stale the moment Google adds one.
+    # Last resort, not the main test. Table A carries dozens of cuisine
+    # variants (italian_restaurant, ramen_restaurant, vegan_restaurant, ...)
+    # and matching the shape covers the ones Google adds later too. A place
+    # that reaches this line has already failed every name above, including
+    # the generic "food".
     return any(t.endswith("_restaurant") or t.endswith("_cafe") for t in types)
 
 
