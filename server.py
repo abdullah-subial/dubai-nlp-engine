@@ -1,4 +1,5 @@
 import os
+import math
 import time
 import json
 import re
@@ -393,27 +394,84 @@ def _area_match_tokens(area):
     }
 
 
+# A Dubai neighbourhood is a couple of kilometres across; 4km from its centre
+# is generous enough to keep the edges and the venues just over the boundary,
+# while the case this exists to reject -- Downtown showing up in a Marina
+# search -- is roughly 15km away.
+AREA_RADIUS_KM = 4.0
+
+
+def _haversine_km(lat1, lng1, lat2, lng2):
+    radius = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = (math.sin(dlat / 2) ** 2
+         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlng / 2) ** 2)
+    return 2 * radius * math.asin(math.sqrt(a))
+
+
+def _place_coords(place):
+    location = place.get("location") or {}
+    lat, lng = location.get("latitude"), location.get("longitude")
+    return (lat, lng) if lat is not None and lng is not None else None
+
+
 def _filter_places_to_area(places, area):
-    """Drop results whose address does not name the area that was searched."""
+    """Keep results that are in the searched area, by address or by distance.
+
+    Address matching alone was too lossy. Plenty of genuine venues carry a
+    formattedAddress of just "Dubai - United Arab Emirates", with no
+    neighbourhood in it at all, and those were being dropped for saying
+    nothing rather than for saying somewhere else -- which is how an Italian
+    search in Dubai Marina came back with 16 restaurants.
+
+    So the address match is now only the first stage: it anchors where the
+    area actually is. The venues it finds give a median coordinate, and
+    anything within AREA_RADIUS_KM of that point is kept too, address or no
+    address. Coordinates come from places.location, already in the field mask,
+    so this costs no extra API call.
+    """
     tokens = _area_match_tokens(area)
     if not tokens:
         # Nothing distinctive to match on -- a bare "Dubai", say. Filtering on
         # no signal would drop everything.
         return places
-    kept = [
-        place for place in places
-        if any(
-            token in (place.get("formattedAddress") or place.get("shortFormattedAddress") or "").lower()
-            for token in tokens
-        )
-    ]
-    if not kept:
-        # Addresses in this area evidently do not repeat its name. Relevance
-        # -ranked results beat an empty page, so keep them and say so.
+
+    def addressed(place):
+        haystack = (place.get("formattedAddress") or place.get("shortFormattedAddress") or "").lower()
+        return any(token in haystack for token in tokens)
+
+    anchors = [place for place in places if addressed(place)]
+    if not anchors:
+        # Addresses in this area evidently do not repeat its name, so there is
+        # nothing to anchor on. Relevance-ranked results beat an empty page.
         print(f"[area-filter] nothing addressed in {sorted(tokens)}; keeping all {len(places)}")
         return places
-    if len(kept) < len(places):
-        print(f"[area-filter] dropped {len(places) - len(kept)} of {len(places)} not addressed in {sorted(tokens)}")
+
+    anchor_coords = [c for c in (_place_coords(p) for p in anchors) if c]
+    if len(anchor_coords) < 2:
+        # One anchor is not a centre, it is a point. Fall back to addresses.
+        print(f"[area-filter] only {len(anchor_coords)} anchor(s) with coordinates; address match only")
+        return anchors
+
+    centre_lat = sorted(c[0] for c in anchor_coords)[len(anchor_coords) // 2]
+    centre_lng = sorted(c[1] for c in anchor_coords)[len(anchor_coords) // 2]
+
+    kept, near_only = [], 0
+    for place in places:
+        if addressed(place):
+            kept.append(place)
+            continue
+        coords = _place_coords(place)
+        if coords and _haversine_km(coords[0], coords[1], centre_lat, centre_lng) <= AREA_RADIUS_KM:
+            kept.append(place)
+            near_only += 1
+
+    dropped = len(places) - len(kept)
+    print(
+        f"[area-filter] {sorted(tokens)}: kept {len(kept)} of {len(places)} "
+        f"({len(anchors)} by address, {near_only} by proximity), dropped {dropped}"
+    )
     return kept
 
 
