@@ -719,6 +719,23 @@ CONSUMPTION_VERB_FALLBACK = {
     "order", "sample", "taste", "try", "advocate", "recommend", "urge",
 }
 
+# How reviews are actually written. Seeding WordNet with order/taste/recommend
+# gave {advocate, order, recommend, sample, taste, try, urge} -- two verbs
+# nobody has ever applied to food, and nothing covering "we HAD the biryani",
+# which is the most common way a dish gets named. Measured against nine
+# realistic phrasings, that set caught two; the parser had already found the
+# right noun phrase in most of the other seven ("Mezze Platter", "Seafood
+# Risotto") and simply never looked, because the verb was not listed.
+#
+# Casting this wide is safe because precision comes from the food filter
+# downstream, not from the verb: "we had a great time" yields "Time" and "we
+# got the bill" yields "Bill", and _phrase_could_be_food rejects both. Broad
+# recall here, precision there.
+CORE_CONSUMPTION_VERBS = {
+    "eat", "have", "get", "share", "enjoy", "love", "serve", "devour",
+    "savor", "savour", "finish", "grab", "order", "try", "taste", "recommend",
+}
+
 
 def _wordnet_verb_synonyms(seed_verb, sense_index):
     """Synonyms for one sense of a seed verb, or None if WordNet is unusable."""
@@ -744,12 +761,20 @@ def _build_consumption_verbs():
     ]
     if any(group is None for group in expanded):
         print("[wordnet] corpus unavailable -- using the stored consumption-verb set")
-        return set(CONSUMPTION_VERB_FALLBACK)
-    return set().union(*expanded)
+        return set(CONSUMPTION_VERB_FALLBACK) | CORE_CONSUMPTION_VERBS
+    return set().union(*expanded) | CORE_CONSUMPTION_VERBS
 
 
 CONSUMPTION_VERBS = _build_consumption_verbs()
-NON_FOOD_ENTITY_LABELS = {"GPE", "LOC", "ORG", "PERSON", "NORP", "FAC"}
+# PERSON is deliberately absent. en_core_web_sm is a small model and labels
+# unfamiliar words by shape, so it intermittently tags dish names as people --
+# "biryani" in "we had the chicken biryani", "knafeh" in "we ordered the
+# knafeh" -- and the chunk was then thrown away. That misfires precisely on
+# the transliterated local dishes this is meant to surface, while a person's
+# name as the object of "we ate/ordered/tried" is vanishingly rare. The place
+# and organisation labels stay: those reject real confusions like a venue or
+# a chain name being read as a dish.
+NON_FOOD_ENTITY_LABELS = {"GPE", "LOC", "ORG", "NORP", "FAC"}
 GENERIC_FALLBACK_WORDS = {
     "place", "restaurant", "experience", "food", "menu", "price", "view",
     "service", "staff", "detail", "attention", "presentation", "wait",
@@ -779,8 +804,39 @@ def _phrase_for_token(token, doc, entity_spans):
                 t.text.lower() for t in chunk
                 if t.pos_ in ("NOUN", "PROPN") and not t.is_stop and t.is_alpha
             ]
+            # A word spaCy has never seen often lands as an appositive of the
+            # word before it rather than inside the same noun chunk, and it
+            # gets its own chunk: "the lamb ouzi" parses as ["the lamb"] +
+            # ["ouzi"], so the dish came back as "Lamb". That failure targets
+            # exactly the transliterated local dishes this is meant to surface,
+            # since those are the words the parser does not know. Pull any
+            # appositive that directly follows the chunk back into the phrase.
+            for child in token.children:
+                if (child.dep_ == "appos" and child.i >= chunk.end
+                        and child.i <= chunk.end + 1
+                        and child.pos_ in ("NOUN", "PROPN")
+                        and child.is_alpha and not child.is_stop):
+                    words.append(child.text.lower())
             if words and len(words) <= 3:
                 return " ".join(words).title()
+            return None
+
+    # No noun chunk covers the object at all. spaCy produces chunks for "I"
+    # alone in "I enjoyed the lamb chops", so the dish was simply lost to a
+    # parse gap. Rebuild the phrase from the token and its own modifiers.
+    if token.i in entity_spans:
+        return None
+    parts = [
+        child for child in token.children
+        if child.dep_ in ("compound", "appos")
+        and child.pos_ in ("NOUN", "PROPN") and child.is_alpha and not child.is_stop
+    ]
+    words = [
+        t.text.lower() for t in sorted(parts + [token], key=lambda t: t.i)
+        if t.pos_ in ("NOUN", "PROPN") and not t.is_stop and t.is_alpha
+    ]
+    if words and len(words) <= 3:
+        return " ".join(words).title()
     return None
 
 
