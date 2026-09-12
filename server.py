@@ -44,6 +44,7 @@ if not API_KEY:
     raise RuntimeError("GOOGLE_PLACES_API_KEY environment variable is not set.")
 
 PLACES_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
+PLACES_DETAILS_URL = "https://places.googleapis.com/v1/places"
 PLACES_AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete"
 FIELD_MASK = (
     "places.id,"
@@ -207,7 +208,7 @@ aspect_classifier = pipeline(
 # CORE PIPELINE (fetch -> sentiment -> scoring -> insights)
 # Kept in lockstep with the notebook cells this logic was validated in.
 # ==========================================
-def _fetch_places_pages(query_string, max_pages=1, page_delay_seconds=2.0, min_rating=3.5):
+def _fetch_places_pages(query_string, max_pages=1, page_delay_seconds=2.0, min_rating=3.5, location_restriction=None):
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": API_KEY,
@@ -217,6 +218,11 @@ def _fetch_places_pages(query_string, max_pages=1, page_delay_seconds=2.0, min_r
     page_token = None
     for _ in range(max_pages):
         payload = {"textQuery": query_string, "languageCode": "en", "regionCode": "AE"}
+        # Scope the search to the area itself. Google applies this as a hard
+        # restriction, so out-of-area venues are never returned and there is
+        # nothing to filter out afterwards.
+        if location_restriction:
+            payload["locationRestriction"] = {"rectangle": location_restriction}
         # Experimental: asks Google itself to exclude low-rated places from
         # what it returns (a filter, not a sort -- rankPreference still only
         # supports RELEVANCE/DISTANCE). Untested against the live API from
@@ -312,6 +318,9 @@ def _autocomplete_dubai(query):
             continue
         structured = prediction.get("structuredFormat") or {}
         suggestions.append({
+            # place_id is what lets the search be scoped to this area's real
+            # boundary rather than to whatever its name happens to match.
+            "place_id": prediction.get("placeId") or "",
             "text": text,
             "main": (structured.get("mainText") or {}).get("text") or "",
             "secondary": (structured.get("secondaryText") or {}).get("text") or "",
@@ -385,6 +394,55 @@ RATING_CASCADE = [4.9, 4.8, 4.5, 4.0, 3.5, None]
 AREA_STOPWORDS = {"dubai", "united", "arab", "emirates", "uae", "the", "area", "and"}
 
 
+_area_viewport_cache = {}
+
+
+def area_viewport(place_id):
+    """Google's own bounding box for an area, or None if it can't be had.
+
+    This replaces guessing an area's extent from its name. Matching address
+    text was unreliable in three separate ways -- it fails open when no
+    address happens to repeat the area name (which is how a DIFC venue
+    appeared in a Design District search), any single token was enough to
+    match so "Financial District" passed a Design District search, and the
+    behaviour varied by area, looking correct on Dubai Marina while degrading
+    on every compound name. A radius around a centre point was no better:
+    Dubai's communities are 2-3km apart, so any radius wide enough to cover
+    one area reaches into the next.
+
+    A viewport is neither guess. It is the extent Google itself uses for that
+    specific place, so Design District ends where Google says it ends.
+
+    Never raises. Every failure returns None and the caller carries on
+    unrestricted, because a search with slightly loose scoping beats an error
+    page.
+    """
+    if not place_id:
+        return None
+    if place_id in _area_viewport_cache:
+        return _area_viewport_cache[place_id]
+    try:
+        response = requests.get(
+            f"{PLACES_DETAILS_URL}/{place_id}",
+            headers={"X-Goog-Api-Key": API_KEY, "X-Goog-FieldMask": "viewport"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        viewport = (response.json() or {}).get("viewport")
+        low, high = (viewport or {}).get("low"), (viewport or {}).get("high")
+        if not (low and high and "latitude" in low and "longitude" in low
+                and "latitude" in high and "longitude" in high):
+            print(f"[area-viewport] no usable viewport for {place_id}")
+            viewport = None
+    except (requests.exceptions.RequestException, ValueError) as exc:
+        print(f"[area-viewport] lookup failed for {place_id}: {exc}")
+        viewport = None
+    _area_viewport_cache[place_id] = viewport
+    if viewport:
+        print(f"[area-viewport] {place_id}: {viewport['low']} .. {viewport['high']}")
+    return viewport
+
+
 def _area_match_tokens(area):
     head = re.split(r"\s+[-\u2013]\s+|,", area or "")[0]
     return {
@@ -430,29 +488,35 @@ def _filter_places_to_area(places, area):
     return kept
 
 
-def _fetch_best_rated_places(query_string, max_pages, top_n, area=""):
+def _fetch_best_rated_places(query_string, max_pages, top_n, area="", viewport=None):
     places = []
     for threshold in RATING_CASCADE:
-        places = _filter_places_to_area(
-            _fetch_places_pages(query_string, max_pages=max_pages, min_rating=threshold),
-            area,
+        places = _fetch_places_pages(
+            query_string, max_pages=max_pages, min_rating=threshold,
+            location_restriction=viewport,
         )
-        # Counted after filtering, so the cascade widens the rating threshold
-        # until there are enough results IN THE AREA, rather than enough
-        # anywhere in Dubai.
+        # With a viewport, Google has already scoped the results and the
+        # address heuristic would only throw away venues it could not read.
+        # Without one -- an older link, or a details lookup that failed -- fall
+        # back to it rather than returning the whole city.
+        if not viewport:
+            places = _filter_places_to_area(places, area)
         if len(places) >= top_n:
             break
     return places
 
 
-def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=20):
+def get_reviews_for_area(area, cuisine="", max_budget=None, max_pages=3, top_n=20, area_place_id=""):
     if not area or not area.strip():
         raise ValueError("area is required (e.g. 'Dubai Marina').")
 
     _count_search_against_daily_cap()
 
     query_string = f"{cuisine} restaurants in {area}".strip()
-    places = _fetch_best_rated_places(query_string, max_pages=max_pages, top_n=top_n, area=area)
+    places = _fetch_best_rated_places(
+        query_string, max_pages=max_pages, top_n=top_n,
+        area=area, viewport=area_viewport(area_place_id),
+    )
 
     if not places:
         empty_summary = pd.DataFrame([{
@@ -1130,14 +1194,17 @@ def _aggregate_stats(df_scorecard):
     }
 
 
-def get_recommendations(area, cuisine="", max_budget=None, use_cache=True):
-    cache_key = (area.strip().lower(), (cuisine or "").strip().lower(), max_budget)
+def get_recommendations(area, cuisine="", max_budget=None, use_cache=True, area_place_id=""):
+    # The id is part of the key: the same area name scoped to a real viewport
+    # yields a different result set than one scoped by address text.
+    cache_key = (area.strip().lower(), (cuisine or "").strip().lower(), max_budget, area_place_id or "")
     if use_cache:
         cached = recommendation_cache.get(cache_key)
         if cached is not None:
             return cached
 
-    df_reviews, df_summary = get_reviews_for_area(area=area, cuisine=cuisine, max_budget=max_budget)
+    df_reviews, df_summary = get_reviews_for_area(
+        area=area, cuisine=cuisine, max_budget=max_budget, area_place_id=area_place_id)
 
     if df_reviews.empty:
         result = {
@@ -1172,8 +1239,8 @@ def get_recommendations(area, cuisine="", max_budget=None, use_cache=True):
     return result
 
 
-def stream_recommendation_events(area, cuisine="", max_budget=None, use_cache=True):
-    cache_key = (area.strip().lower(), (cuisine or "").strip().lower(), max_budget)
+def stream_recommendation_events(area, cuisine="", max_budget=None, use_cache=True, area_place_id=""):
+    cache_key = (area.strip().lower(), (cuisine or "").strip().lower(), max_budget, area_place_id or "")
 
     if use_cache:
         cached = recommendation_cache.get(cache_key)
@@ -1188,7 +1255,8 @@ def stream_recommendation_events(area, cuisine="", max_budget=None, use_cache=Tr
             }
             return
 
-    df_reviews, df_summary = get_reviews_for_area(area=area, cuisine=cuisine, max_budget=max_budget)
+    df_reviews, df_summary = get_reviews_for_area(
+        area=area, cuisine=cuisine, max_budget=max_budget, area_place_id=area_place_id)
 
     if df_reviews.empty:
         result = {
@@ -1280,10 +1348,11 @@ def recommend(
     area: str = Query(..., min_length=1, description="Required. e.g. 'Dubai Marina'"),
     cuisine: str = Query("", description="Optional cuisine filter, e.g. 'Italian'"),
     budget: float = Query(None, description="Optional max budget in AED"),
+    area_id: str = Query("", description="Google place id for the area, from /api/area-suggest"),
 ):
     _check_rate_limit("search", request)
     try:
-        return get_recommendations(area=area, cuisine=cuisine, max_budget=budget)
+        return get_recommendations(area=area, cuisine=cuisine, max_budget=budget, area_place_id=area_id)
     except DailyLimitReached as exc:
         raise HTTPException(status_code=429, detail=str(exc))
     except ValueError as exc:
@@ -1298,12 +1367,14 @@ def recommend_stream(
     area: str = Query(..., min_length=1, description="Required. e.g. 'Dubai Marina'"),
     cuisine: str = Query("", description="Optional cuisine filter, e.g. 'Italian'"),
     budget: float = Query(None, description="Optional max budget in AED"),
+    area_id: str = Query("", description="Google place id for the area, from /api/area-suggest"),
 ):
     _check_rate_limit("search", request)
 
     def event_generator():
         try:
-            for event in stream_recommendation_events(area=area, cuisine=cuisine, max_budget=budget):
+            for event in stream_recommendation_events(
+                area=area, cuisine=cuisine, max_budget=budget, area_place_id=area_id):
                 yield json.dumps(event) + "\n"
         except DailyLimitReached as exc:
             # Tagged so the page can show it as a limit rather than a failed search.
