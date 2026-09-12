@@ -84,6 +84,14 @@ a{color:inherit; text-decoration:none;}
   .nav{flex-wrap:wrap; row-gap:10px;}
   .query-summary{order:3; width:100%; font-size:0.82rem;}
 }
+/* Below this the longer wordmark and the New Search button stop fitting on one
+   row and the page scrolls sideways. Both are flex-shrink:0 by design, so drop
+   the city instead of shrinking the brand -- the query summary directly beneath
+   already says which area the results are for. Nav only; the footer wordmark
+   has the room and keeps it. */
+@media (max-width:430px){
+  .nav .wordmark .dot, .nav .wordmark .mark-city{display:none;}
+}
 
 /* ============ SECTION SHELL ============ */
 .wrap{max-width:var(--maxw); margin:0 auto; padding:0 clamp(20px,4vw,56px);}
@@ -358,7 +366,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
 
 <div class="nav-shell">
   <nav class="nav">
-    <a class="wordmark" href="/" title="Back to search">DINE<span class="dot"></span>DUBAI</a>
+    <a class="wordmark" href="/" title="Back to search">FIND MY TABLE<span class="dot"></span><span class="mark-city">DUBAI</span></a>
     <div class="query-summary" id="querySummary"></div>
     <button class="new-search-btn" type="button" id="newSearchBtn">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 2v20M2 12h20"/></svg>
@@ -383,7 +391,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
 <footer>
   <div class="footer-inner">
     <div>
-      <div class="wordmark">DINE<span class="dot"></span>DUBAI</div>
+      <div class="wordmark">FIND MY TABLE<span class="dot"></span>DUBAI</div>
       <p class="footer-blurb">A guest-sentiment dining guide for Dubai — every recommendation is read from real Google reviews, not just star ratings.</p>
     </div>
     <div>
@@ -391,7 +399,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
       <p class="footer-note">Scores blend Google rating, AI-read review sentiment, food/service/price mentions, and price-to-value. Unlisted menu prices are estimated from similar venues nearby.</p>
     </div>
   </div>
-  <div class="footer-bottom">© 2026 Dine Dubai — A guest-sentiment dining guide.</div>
+  <div class="footer-bottom">© 2026 Find My Table — A guest-sentiment dining guide.</div>
 </footer>
 
 <script>
@@ -487,7 +495,7 @@ footer{background:var(--maroon-ink); color:#e9c9cf; margin-top:30px;}
       {label:"Restaurants Analyzed", value:stats.restaurants_analyzed, suffix:""},
       {label:"Reviews Analyzed", value:stats.reviews_analyzed, suffix:""},
       {label:"Average Google Rating", value:stats.avg_google_rating, suffix:"", unit:"★"},
-      {label:"Average Sentiment", value:stats.avg_sentiment_pct, suffix:"%"},
+      {label:"Average Positive Sentiment", value:stats.avg_sentiment_pct, suffix:"%"},
       {label:"Average Spend / Person", value:stats.avg_spend_per_person, suffix:"", currency:"AED"}
     ];
     $("#statsSection").innerHTML = `<div class="stats fade-in opt-gold">${items.map((it) => `

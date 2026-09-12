@@ -1,4 +1,4 @@
-# Deploying Dine Dubai
+# Deploying Find My Table
 
 The whole app is one process: FastAPI serves both HTML pages and the JSON API,
 so there is no separate frontend to host and no database to provision.
@@ -95,7 +95,7 @@ memory floor below still applies whichever tier you land on.
 
    ```yaml
    ---
-   title: Dine Dubai
+   title: Find My Table
    emoji: 🍽️
    colorFrom: red
    colorTo: yellow
