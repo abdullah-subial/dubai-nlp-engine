@@ -263,9 +263,15 @@ footer{
 
   // Prefill from the URL when arriving via the results page's "Edit" link
   const initParams = new URLSearchParams(window.location.search);
-  if(initParams.get("area")) document.getElementById("areaInput").value = initParams.get("area");
   if(initParams.get("cuisine")) document.getElementById("cuisineInput").value = initParams.get("cuisine");
   if(initParams.get("budget")) document.getElementById("budgetInput").value = initParams.get("budget");
+
+  // "Dubai Marina - Dubai - United Arab Emirates" -> "Dubai Marina".
+  // Kept identical to results_page.html's shortAreaName so a place reads the
+  // same on both screens.
+  function shortAreaName(area){
+    return String(area || '').split(/\s+[-\u2013]\s+|,/)[0].trim() || String(area || '');
+  }
 
   const CUISINE_OPTIONS = [
     "Emirati", "Lebanese", "Indian", "Italian", "Japanese", "Chinese", "Turkish",
@@ -283,7 +289,7 @@ footer{
   // an async function(query) => Promise<string[]> (Area -- live, debounced
   // lookup against /api/area-suggest, since only Google's own database can
   // realistically cover every real Dubai locality).
-  function setupSuggest(inputId, listId, source){
+  function setupSuggest(inputId, listId, source, displayOf){
     const input = document.getElementById(inputId);
     const list = document.getElementById(listId);
     const isStatic = Array.isArray(source);
@@ -295,7 +301,23 @@ footer{
     // suggestion (set on click/Enter-select, or via setConfirmed()) --
     // `currentItems` alone isn't enough since it gets cleared to [] the
     // moment a selection is made and the dropdown closes.
+    //
+    // Two values, not one. Google's formatted place name is what has to reach
+    // Text Search -- searching the short name reintroduces the bug where
+    // "mirdiff" quietly returned Dubai Mall results, because Autocomplete
+    // tolerates typos and Text Search does not. But that string is far wider
+    // than the field, so it displayed clipped mid-word. confirmedValue is what
+    // gets submitted; confirmedDisplay is what the user sees and what we
+    // compare the field against to tell whether they have edited it since.
     let confirmedValue = null;
+    const toDisplay = displayOf || ((v) => v);
+    let confirmedDisplay = null;
+
+    function confirmPick(text){
+      confirmedValue = text;
+      confirmedDisplay = toDisplay(text);
+      input.value = confirmedDisplay;
+    }
 
     input.setAttribute("role", "combobox");
     input.setAttribute("aria-expanded", "false");
@@ -358,8 +380,7 @@ footer{
       const item = e.target.closest(".suggest-item");
       if(!item) return;
       e.preventDefault();
-      input.value = item.textContent;
-      confirmedValue = item.textContent;
+      confirmPick(item.textContent);
       renderItems([]);
     });
 
@@ -375,7 +396,7 @@ footer{
         updateActive();
       } else if(e.key === "Enter"){
         const pick = activeIndex >= 0 ? currentItems[activeIndex] : currentItems[0];
-        if(pick){ e.preventDefault(); input.value = pick; confirmedValue = pick; renderItems([]); }
+        if(pick){ e.preventDefault(); confirmPick(pick); renderItems([]); }
       } else if(e.key === "Escape"){
         renderItems([]);
       }
@@ -389,7 +410,11 @@ footer{
       // What we currently know for certain matches a real, live-verified
       // suggestion -- null if the user has typed anything since.
       getConfirmed: () => confirmedValue,
-      setConfirmed: (value) => { confirmedValue = value; },
+      // What the field shows for the confirmed value. Submit compares the
+      // field against this: equal means untouched since the pick, so the
+      // canonical value is still the right thing to search.
+      getConfirmedDisplay: () => confirmedDisplay,
+      setConfirmed: (value) => { confirmPick(value); },
       showItems: (items) => renderItems(items),
       // One-off lookup for exactly the given text, independent of the
       // debounced dropdown -- used to verify a value the user typed (or a
@@ -400,7 +425,7 @@ footer{
     };
   }
 
-  const areaSuggestCtl = setupSuggest("areaInput", "areaSuggest", fetchAreaSuggestions);
+  const areaSuggestCtl = setupSuggest("areaInput", "areaSuggest", fetchAreaSuggestions, shortAreaName);
   setupSuggest("cuisineInput", "cuisineSuggest", CUISINE_OPTIONS);
 
   // A prefilled value (arriving via the results page's "Edit" link) was
@@ -462,10 +487,10 @@ footer{
     // Only an exact, live-verified suggestion is allowed through, so free
     // text (a typo, a made-up place, somewhere outside Dubai) can't reach
     // the backend as-is.
-    if(areaSuggestCtl.getConfirmed() === area){
+    if(areaSuggestCtl.getConfirmedDisplay() === area){
       btn.classList.add("is-loading");
       label.textContent = "Searching…";
-      goToResults(area);
+      goToResults(areaSuggestCtl.getConfirmed());
       return;
     }
 
