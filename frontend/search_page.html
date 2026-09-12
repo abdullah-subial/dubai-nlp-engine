@@ -318,10 +318,16 @@ footer{
     let confirmedValue = null;
     const toDisplay = displayOf || ((v) => v);
     let confirmedDisplay = null;
+    // Google's id for the confirmed area. The search is scoped to this area's
+    // real boundary, so without it the backend falls back to matching the
+    // area's name against addresses -- which is what let a DIFC venue into a
+    // Design District search.
+    let confirmedId = "";
 
-    function confirmPick(text){
+    function confirmPick(text, placeId){
       confirmedValue = text;
       confirmedDisplay = toDisplay(text);
+      confirmedId = placeId || "";
       input.value = confirmedDisplay;
     }
 
@@ -335,6 +341,7 @@ footer{
     // as {text, main, secondary} from /api/area-suggest. Everything that reads
     // an item goes through these so both shapes work.
     function itemValue(o){ return typeof o === "string" ? o : (o && o.text) || ""; }
+    function itemId(o){ return (o && typeof o === "object" && o.place_id) || ""; }
     function itemMain(o){
       if (typeof o === "string") return o;
       return (o && o.main) || shortAreaName(itemValue(o));
@@ -366,7 +373,7 @@ footer{
       // textContent would run the main and secondary text together.
       list.innerHTML = items.map((o, i) => {
         const sub = itemSecondary(o);
-        return `<div class="suggest-item" role="option" id="${listId}-opt-${i}" data-value="${esc(itemValue(o))}">`
+        return `<div class="suggest-item" role="option" id="${listId}-opt-${i}" data-value="${esc(itemValue(o))}" data-id="${esc(itemId(o))}">`
              + `<span class="suggest-main">${esc(itemMain(o))}</span>`
              + (sub ? `<span class="suggest-sub">${esc(sub)}</span>` : "")
              + `</div>`;
@@ -415,7 +422,7 @@ footer{
       const item = e.target.closest(".suggest-item");
       if(!item) return;
       e.preventDefault();
-      confirmPick(item.dataset.value);
+      confirmPick(item.dataset.value, item.dataset.id);
       renderItems([]);
     });
 
@@ -431,7 +438,7 @@ footer{
         updateActive();
       } else if(e.key === "Enter"){
         const pick = activeIndex >= 0 ? currentItems[activeIndex] : currentItems[0];
-        if(pick){ e.preventDefault(); confirmPick(itemValue(pick)); renderItems([]); }
+        if(pick){ e.preventDefault(); confirmPick(itemValue(pick), itemId(pick)); renderItems([]); }
       } else if(e.key === "Escape"){
         renderItems([]);
       }
@@ -449,7 +456,8 @@ footer{
       // field against this: equal means untouched since the pick, so the
       // canonical value is still the right thing to search.
       getConfirmedDisplay: () => confirmedDisplay,
-      setConfirmed: (value) => { confirmPick(value); },
+      getConfirmedId: () => confirmedId,
+      setConfirmed: (value, placeId) => { confirmPick(value, placeId); },
       showItems: (items) => renderItems(items),
       // One-off lookup for exactly the given text, independent of the
       // debounced dropdown -- used to verify a value the user typed (or a
@@ -467,7 +475,7 @@ footer{
   // already a valid, previously-searched Dubai area -- treat it as
   // pre-confirmed so re-submitting without touching the field doesn't pay
   // for a fresh verification lookup.
-  if(initParams.get("area")) areaSuggestCtl.setConfirmed(initParams.get("area"));
+  if(initParams.get("area")) areaSuggestCtl.setConfirmed(initParams.get("area"), initParams.get("area_id") || "");
 
   function resetSubmitButton(){
     btn.classList.remove("is-loading");
@@ -501,11 +509,12 @@ footer{
 
   areaInputEl.addEventListener("input", clearAreaError);
 
-  function goToResults(area){
+  function goToResults(area, areaId){
     clearAreaError();
     const cuisine = document.getElementById("cuisineInput").value.trim();
     const budget = document.getElementById("budgetInput").value.trim();
     const params = new URLSearchParams({ area });
+    if(areaId) params.set("area_id", areaId);
     if(cuisine) params.set("cuisine", cuisine);
     if(budget) params.set("budget", budget);
     window.location.href = `/results?${params.toString()}`;
@@ -525,7 +534,7 @@ footer{
     if(areaSuggestCtl.getConfirmedDisplay() === area){
       btn.classList.add("is-loading");
       label.textContent = "Searching…";
-      goToResults(areaSuggestCtl.getConfirmed());
+      goToResults(areaSuggestCtl.getConfirmed(), areaSuggestCtl.getConfirmedId());
       return;
     }
 
