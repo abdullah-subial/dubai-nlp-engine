@@ -56,6 +56,10 @@ FIELD_MASK = (
     "places.priceLevel,"
     "places.priceRange,"
     "places.primaryTypeDisplayName,"
+    # primaryTypeDisplayName is a label for humans ("Corporate office"), which
+    # is no good for filtering. These two are the machine-readable types.
+    "places.primaryType,"
+    "places.types,"
     "places.formattedAddress,"
     "places.shortFormattedAddress,"
     "nextPageToken"
@@ -488,6 +492,49 @@ def _filter_places_to_area(places, area):
     return kept
 
 
+# Text Search matches on words, and the query contains the area name, so a
+# search for "restaurants in Dubai Design District" returns places NAMED after
+# the district -- its own entrance gate came back as a result, typed
+# corporate_office. Restricting the search to one includedType is not an option
+# either: it takes a single value, and a dining guide wants cafes and bakeries
+# alongside restaurants. So filter on what Google says the place IS.
+FOOD_PLACE_TYPES = {
+    "restaurant", "cafe", "coffee_shop", "bakery", "bar", "pub", "wine_bar",
+    "bar_and_grill", "meal_takeaway", "meal_delivery", "food_court", "deli",
+    "ice_cream_shop", "dessert_shop", "juice_shop", "tea_house", "food",
+    "sandwich_shop", "steak_house", "diner", "buffet_restaurant", "bistro",
+}
+
+
+def _is_food_place(place):
+    types = set(place.get("types") or [])
+    primary = place.get("primaryType") or ""
+    if primary:
+        types.add(primary)
+    if not types:
+        # No type information at all -- keep it rather than drop a real venue
+        # on missing data. The area scoping has already been applied.
+        return True
+    if types & FOOD_PLACE_TYPES:
+        return True
+    # Table A carries dozens of cuisine-specific variants (italian_restaurant,
+    # pizza_restaurant, vegan_restaurant, ...). Match the shape instead of
+    # trying to list them all and going stale the moment Google adds one.
+    return any(t.endswith("_restaurant") or t.endswith("_cafe") for t in types)
+
+
+def _filter_to_food_places(places):
+    kept = [p for p in places if _is_food_place(p)]
+    dropped = len(places) - len(kept)
+    if dropped:
+        names = [
+            f"{p.get('displayName', {}).get('text', '?')} ({p.get('primaryType') or 'no type'})"
+            for p in places if not _is_food_place(p)
+        ]
+        print(f"[type-filter] dropped {dropped} non-food place(s): {names[:5]}")
+    return kept
+
+
 def _fetch_best_rated_places(query_string, max_pages, top_n, area="", viewport=None):
     places = []
     for threshold in RATING_CASCADE:
@@ -501,6 +548,9 @@ def _fetch_best_rated_places(query_string, max_pages, top_n, area="", viewport=N
         # back to it rather than returning the whole city.
         if not viewport:
             places = _filter_places_to_area(places, area)
+        # Before the count, so the cascade widens the rating threshold until
+        # there are enough actual restaurants rather than enough places.
+        places = _filter_to_food_places(places)
         if len(places) >= top_n:
             break
     return places
