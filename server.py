@@ -294,11 +294,28 @@ def _autocomplete_dubai(query):
         print(f"[area-suggest] request failed: {exc}")
         return []
 
+    # Each suggestion carries the canonical string plus Google's own split of
+    # it. "text" stays exactly what it was -- it is what gets submitted and
+    # searched, and the mirdiff fix depends on that being the full formatted
+    # name. "main" and "secondary" only change how the dropdown is drawn:
+    # "Dubai Marina" on one line, "Dubai - United Arab Emirates" muted beneath,
+    # instead of one long string wrapping to three lines.
+    #
+    # structuredFormat is documented but treated as optional here: if it is
+    # ever missing the entry still has "text", and the frontend falls back to
+    # splitting that itself.
     suggestions = []
     for item in data.get("suggestions", []):
-        text = item.get("placePrediction", {}).get("text", {}).get("text")
-        if text and not any(emirate in text.lower() for emirate in OTHER_EMIRATES):
-            suggestions.append(text)
+        prediction = item.get("placePrediction", {})
+        text = prediction.get("text", {}).get("text")
+        if not text or any(emirate in text.lower() for emirate in OTHER_EMIRATES):
+            continue
+        structured = prediction.get("structuredFormat") or {}
+        suggestions.append({
+            "text": text,
+            "main": (structured.get("mainText") or {}).get("text") or "",
+            "secondary": (structured.get("secondaryText") or {}).get("text") or "",
+        })
     _area_suggest_cache[cache_key] = (suggestions, time.time() + _AREA_SUGGEST_TTL)
     return suggestions
 
